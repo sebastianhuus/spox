@@ -142,6 +142,19 @@ fn cmd_init() {
     println!("created: {}", format_file.display());
 }
 
+fn status_group(status: &str) -> u8 {
+    let s = status.to_lowercase();
+    if s.contains("partial") || s.contains("progress") || s.contains("wip") || s.contains("active") {
+        0
+    } else if s.contains("complet") || s.contains("done") || s.contains("finish") || s.contains("implement") {
+        2
+    } else if s.contains("draft") || s.contains("plan") || s.contains("todo") || s.contains("backlog") {
+        1
+    } else {
+        0
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
@@ -185,7 +198,11 @@ fn main() {
                 return;
             }
 
-            specs.sort_by(|a, b| a.name.cmp(&b.name));
+            specs.sort_by(|a, b| {
+                status_group(&a.status)
+                    .cmp(&status_group(&b.status))
+                    .then(a.name.cmp(&b.name))
+            });
 
             let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
             for spec in &specs {
