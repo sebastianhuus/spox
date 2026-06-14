@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 const SKILL_MD: &str = include_str!("../skills/spox/SPOX.md");
 
@@ -32,6 +33,28 @@ fn find_project_root() -> PathBuf {
         if !dir.pop() {
             return env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         }
+    }
+}
+
+fn skill_is_installed() -> bool {
+    find_project_root()
+        .join(".claude")
+        .join("skills")
+        .join("spox")
+        .join("SPOX.md")
+        .exists()
+}
+
+fn maybe_suggest_install() {
+    if skill_is_installed() {
+        return;
+    }
+    let show = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs() % 5 == 0)
+        .unwrap_or(false);
+    if show {
+        eprintln!("\ntip: run `spox skill install` to add the spox skill to Claude Code");
     }
 }
 
@@ -94,6 +117,12 @@ fn main() {
                 .filter_map(|p| parse_spec(&p))
                 .collect();
 
+            if specs.is_empty() {
+                eprintln!("no specs found in {}", spox_dir.display());
+                maybe_suggest_install();
+                return;
+            }
+
             specs.sort_by(|a, b| a.name.cmp(&b.name));
 
             let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
@@ -107,6 +136,8 @@ fn main() {
                     }
                 }
             }
+
+            maybe_suggest_install();
         }
     }
 }
