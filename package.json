@@ -1,0 +1,6 @@
+{
+  "name": "spox",
+  "scripts": {
+    "build": "cargo build --release"
+  }
+}

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 const SKILL_MD: &str = include_str!("../skills/spox/SPOX.md");
+const FORMAT_MD: &str = include_str!("../format.md");
 
 struct Spec {
     name: String,
@@ -106,10 +107,41 @@ fn cmd_skill_install() {
     println!("installed: {}", dest_file.display());
 }
 
+fn cmd_init() {
+    let spox_dir = env::current_dir()
+        .unwrap_or_else(|e| {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        })
+        .join(".spox");
+
+    if spox_dir.exists() {
+        eprintln!("error: .spox already exists at {}", spox_dir.display());
+        std::process::exit(1);
+    }
+
+    fs::create_dir(&spox_dir).unwrap_or_else(|e| {
+        eprintln!("error: could not create {}: {}", spox_dir.display(), e);
+        std::process::exit(1);
+    });
+
+    let format_file = spox_dir.join(".format.md");
+    fs::write(&format_file, FORMAT_MD).unwrap_or_else(|e| {
+        eprintln!("error: could not write {}: {}", format_file.display(), e);
+        std::process::exit(1);
+    });
+
+    println!("created: {}", spox_dir.display());
+    println!("created: {}", format_file.display());
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
     match args.as_slice() {
+        [a] if a == "init" => {
+            cmd_init();
+        }
         [a, b] if a == "skill" && b == "install" => {
             cmd_skill_install();
         }
@@ -135,6 +167,7 @@ fn main() {
                 })
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
+                .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| !n.starts_with('.')).unwrap_or(false))
                 .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
                 .filter_map(|p| parse_spec(&p))
                 .collect();
