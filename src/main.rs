@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+const SKILL_MD: &str = include_str!("../skills/spox/SPOX.md");
+
 struct Spec {
     name: String,
     status: String,
@@ -21,6 +23,18 @@ fn find_spox_dir() -> Option<PathBuf> {
     }
 }
 
+fn find_project_root() -> PathBuf {
+    let mut dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    loop {
+        if dir.join(".git").exists() {
+            return dir;
+        }
+        if !dir.pop() {
+            return env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        }
+    }
+}
+
 fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     let name = path.file_stem()?.to_string_lossy().into_owned();
     let content = fs::read_to_string(path).ok()?;
@@ -36,36 +50,62 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     Some(Spec { name, status, open_criteria })
 }
 
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
+fn cmd_skill_install() {
+    let root = find_project_root();
+    let dest_dir = root.join(".claude").join("skills").join("spox");
+    let dest_file = dest_dir.join("SPOX.md");
 
-    let spox_dir = find_spox_dir().unwrap_or_else(|| {
-        eprintln!("error: no .spox directory found in this or any parent directory");
+    fs::create_dir_all(&dest_dir).unwrap_or_else(|e| {
+        eprintln!("error: could not create {}: {}", dest_dir.display(), e);
         std::process::exit(1);
     });
 
-    let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
-        .unwrap_or_else(|e| {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        })
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
-        .filter_map(|p| parse_spec(&p))
-        .collect();
+    fs::write(&dest_file, SKILL_MD).unwrap_or_else(|e| {
+        eprintln!("error: could not write {}: {}", dest_file.display(), e);
+        std::process::exit(1);
+    });
 
-    specs.sort_by(|a, b| a.name.cmp(&b.name));
+    println!("installed: {}", dest_file.display());
+}
 
-    let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
-    for spec in &specs {
-        println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
-        if show_criteria {
-            let n = spec.open_criteria.len();
-            for (i, criterion) in spec.open_criteria.iter().enumerate() {
-                let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
-                println!("{} {}", branch, criterion);
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+
+    match args.as_slice() {
+        [a, b] if a == "skill" && b == "install" => {
+            cmd_skill_install();
+        }
+        _ => {
+            let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
+
+            let spox_dir = find_spox_dir().unwrap_or_else(|| {
+                eprintln!("error: no .spox directory found in this or any parent directory");
+                std::process::exit(1);
+            });
+
+            let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
+                .unwrap_or_else(|e| {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                })
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
+                .filter_map(|p| parse_spec(&p))
+                .collect();
+
+            specs.sort_by(|a, b| a.name.cmp(&b.name));
+
+            let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
+            for spec in &specs {
+                println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+                if show_criteria {
+                    let n = spec.open_criteria.len();
+                    for (i, criterion) in spec.open_criteria.iter().enumerate() {
+                        let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
+                        println!("{} {}", branch, criterion);
+                    }
+                }
             }
         }
     }
