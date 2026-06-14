@@ -49,7 +49,7 @@ Some notes about this spec.
 
 **Update a spec** — edit the relevant `.spox/<name>.md` file directly.
 
-**Install the skill into a project** — run `spox skill install`; this embeds the skill at `.claude/skills/spox/SPOX.md` relative to the git root.
+**Install the skill into a project** — run `spox skill install`; this embeds the skill at `.claude/skills/spox/SKILL.md` relative to the git root.
 
 ## If spox isn't installed
 

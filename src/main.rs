@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-const SKILL_MD: &str = include_str!("../skills/spox/SPOX.md");
+const SKILL_MD: &str = include_str!("../skills/spox/SKILL.md");
 const FORMAT_MD: &str = include_str!("../format.md");
 
 struct Spec {
@@ -44,14 +44,13 @@ enum SkillStatus {
 }
 
 fn skill_status() -> SkillStatus {
-    let path = find_project_root()
-        .join(".claude")
-        .join("skills")
-        .join("spox")
-        .join("SPOX.md");
-    match fs::read_to_string(&path) {
+    let skill_dir = find_project_root().join(".claude").join("skills").join("spox");
+    let new_path = skill_dir.join("SKILL.md");
+    let old_path = skill_dir.join("SPOX.md");
+    match fs::read_to_string(&new_path) {
         Ok(installed) if installed == SKILL_MD => SkillStatus::Current,
         Ok(_) => SkillStatus::Outdated,
+        Err(_) if old_path.exists() => SkillStatus::Outdated,
         Err(_) => SkillStatus::NotInstalled,
     }
 }
@@ -92,7 +91,7 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
 fn cmd_skill_install() {
     let root = find_project_root();
     let dest_dir = root.join(".claude").join("skills").join("spox");
-    let dest_file = dest_dir.join("SPOX.md");
+    let dest_file = dest_dir.join("SKILL.md");
 
     fs::create_dir_all(&dest_dir).unwrap_or_else(|e| {
         eprintln!("error: could not create {}: {}", dest_dir.display(), e);
@@ -103,6 +102,14 @@ fn cmd_skill_install() {
         eprintln!("error: could not write {}: {}", dest_file.display(), e);
         std::process::exit(1);
     });
+
+    let old_file = dest_dir.join("SPOX.md");
+    if old_file.exists() {
+        fs::remove_file(&old_file).unwrap_or_else(|e| {
+            eprintln!("warning: could not remove {}: {}", old_file.display(), e);
+        });
+        println!("migrated: removed {}", old_file.display());
+    }
 
     println!("installed: {}", dest_file.display());
 }
