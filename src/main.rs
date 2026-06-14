@@ -36,25 +36,40 @@ fn find_project_root() -> PathBuf {
     }
 }
 
-fn skill_is_installed() -> bool {
-    find_project_root()
+enum SkillStatus {
+    Current,
+    Outdated,
+    NotInstalled,
+}
+
+fn skill_status() -> SkillStatus {
+    let path = find_project_root()
         .join(".claude")
         .join("skills")
         .join("spox")
-        .join("SPOX.md")
-        .exists()
+        .join("SPOX.md");
+    match fs::read_to_string(&path) {
+        Ok(installed) if installed == SKILL_MD => SkillStatus::Current,
+        Ok(_) => SkillStatus::Outdated,
+        Err(_) => SkillStatus::NotInstalled,
+    }
 }
 
 fn maybe_suggest_install() {
-    if skill_is_installed() {
-        return;
-    }
-    let show = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs() % 5 == 0)
-        .unwrap_or(false);
-    if show {
-        eprintln!("\ntip: run `spox skill install` to add the spox skill to Claude Code");
+    match skill_status() {
+        SkillStatus::Current => {}
+        SkillStatus::Outdated => {
+            eprintln!("\ntip: spox skill is out of date — run `spox skill install` to update");
+        }
+        SkillStatus::NotInstalled => {
+            let show = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs() % 5 == 0)
+                .unwrap_or(false);
+            if show {
+                eprintln!("\ntip: run `spox skill install` to add the spox skill to Claude Code");
+            }
+        }
     }
 }
 
@@ -99,6 +114,13 @@ fn main() {
             cmd_skill_install();
         }
         _ => {
+            if let Some(unknown) = args.iter().find(|a| *a != "--criteria" && *a != "-c") {
+                eprintln!("error: unknown argument `{}`", unknown);
+                eprintln!("usage: spox [-c|--criteria]");
+                eprintln!("       spox skill install");
+                std::process::exit(1);
+            }
+
             let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
 
             let spox_dir = find_spox_dir().unwrap_or_else(|| {
