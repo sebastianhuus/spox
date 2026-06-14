@@ -88,6 +88,115 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     Some(Spec { name, status, open_criteria })
 }
 
+fn require_spox_dir() -> PathBuf {
+    find_spox_dir().unwrap_or_else(|| {
+        eprintln!("error: no .spox directory found in this or any parent directory");
+        std::process::exit(1);
+    })
+}
+
+fn find_spec_path(spox_dir: &std::path::Path, spec_name: &str) -> PathBuf {
+    let path = spox_dir.join(format!("{}.md", spec_name));
+    if !path.exists() {
+        eprintln!("error: spec '{}' not found in {}", spec_name, spox_dir.display());
+        std::process::exit(1);
+    }
+    path
+}
+
+fn read_spec_content(path: &std::path::Path) -> String {
+    fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
+    })
+}
+
+fn write_spec_content(path: &std::path::Path, content: &str) {
+    fs::write(path, content).unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
+    });
+}
+
+fn cmd_check(spec_name: &str, n_str: &str) {
+    let n: usize = n_str.parse().unwrap_or_else(|_| {
+        eprintln!("error: criterion index must be a positive integer");
+        std::process::exit(1);
+    });
+    if n == 0 {
+        eprintln!("error: criterion index starts at 1");
+        std::process::exit(1);
+    }
+
+    let spox_dir = require_spox_dir();
+    let spec_path = find_spec_path(&spox_dir, spec_name);
+    let content = read_spec_content(&spec_path);
+
+    let lines: Vec<&str> = content.lines().collect();
+    let total_open = lines.iter().filter(|l| l.starts_with("- [ ] ")).count();
+
+    let mut open_count = 0;
+    let mut target_idx: Option<usize> = None;
+    for (i, line) in lines.iter().enumerate() {
+        if line.starts_with("- [ ] ") {
+            open_count += 1;
+            if open_count == n {
+                target_idx = Some(i);
+                break;
+            }
+        }
+    }
+
+    let target = target_idx.unwrap_or_else(|| {
+        eprintln!(
+            "error: spec '{}' has {} open criterion/criteria (you asked for #{})",
+            spec_name, total_open, n
+        );
+        std::process::exit(1);
+    });
+
+    let criterion_text = lines[target].strip_prefix("- [ ] ").unwrap_or("").to_string();
+    let mut new_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    new_lines[target] = format!("- [x] {}", criterion_text);
+
+    let was_last = total_open == 1;
+    if was_last && new_lines[0].starts_with("status: ") {
+        new_lines[0] = "status: completed".to_string();
+    }
+
+    let trailing_newline = if content.ends_with('\n') { "\n" } else { "" };
+    write_spec_content(&spec_path, &(new_lines.join("\n") + trailing_newline));
+
+    println!("checked: {} #{} — {}", spec_name, n, criterion_text);
+    if was_last {
+        println!("status:  {} → completed (all criteria done)", spec_name);
+    }
+}
+
+fn cmd_set_status(spec_name: &str, value: &str) {
+    let spox_dir = require_spox_dir();
+    let spec_path = find_spec_path(&spox_dir, spec_name);
+    let content = read_spec_content(&spec_path);
+
+    let old_status = content
+        .lines()
+        .next()
+        .and_then(|l| l.strip_prefix("status: "))
+        .unwrap_or("(none)")
+        .trim()
+        .to_string();
+
+    let new_content = if content.starts_with("status: ") {
+        let rest_start = content.find('\n').unwrap_or(content.len());
+        format!("status: {}{}", value, &content[rest_start..])
+    } else {
+        format!("status: {}\n{}", value, content)
+    };
+
+    write_spec_content(&spec_path, &new_content);
+    println!("{}: {} → {}", spec_name, old_status, value);
+}
+
 fn cmd_skill_install() {
     let root = find_project_root();
     let dest_dir = root.join(".claude").join("skills").join("spox");
@@ -165,10 +274,18 @@ fn main() {
         [a, b] if a == "skill" && b == "install" => {
             cmd_skill_install();
         }
+        [a, b, c] if a == "check" => {
+            cmd_check(b, c);
+        }
+        [a, b, c] if a == "status" => {
+            cmd_set_status(b, c);
+        }
         _ => {
             if let Some(unknown) = args.iter().find(|a| *a != "--criteria" && *a != "-c") {
                 eprintln!("error: unknown argument `{}`", unknown);
                 eprintln!("usage: spox [-c|--criteria]");
+                eprintln!("       spox check <spec> <n>");
+                eprintln!("       spox status <spec> <value>");
                 eprintln!("       spox skill install");
                 std::process::exit(1);
             }
@@ -211,7 +328,7 @@ fn main() {
                     let n = spec.open_criteria.len();
                     for (i, criterion) in spec.open_criteria.iter().enumerate() {
                         let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
-                        println!("{} {}", branch, criterion);
+                        println!("{} {}. {}", branch, i + 1, criterion);
                     }
                 }
             }

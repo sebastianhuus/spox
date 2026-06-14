@@ -1,35 +1,65 @@
 ---
 name: spox
-description: Use this skill when the user wants to check, list, or discuss project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
+description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
 ---
 
 ## What spox does
 
-`spox` is an installed CLI tool that lists spec statuses from a `.spox/` directory, walking up the tree from CWD (git-style) to find it. Run it via Bash.
+`spox` is an installed CLI tool that lists and updates spec statuses from a `.spox/` directory, walking up the tree from CWD (git-style) to find it. Run it via Bash.
 
 ## Commands
 
 ```
-spox              # list all specs with their status
-spox -c           # also show open (unchecked) criteria under each spec
-spox --criteria   # same as -c
-spox skill install  # copy this skill into the project's .claude/skills/
+spox                        # list all specs with their status
+spox -c                     # also show numbered open criteria under each spec
+spox --criteria             # same as -c
+spox check <spec> <n>       # check off the nth open criterion (1-indexed, matches spox -c output)
+spox status <spec> <value>  # set the status field of a spec
+spox skill install          # copy this skill into the project's .claude/skills/
 ```
 
 ## Reading the output
 
-Each line is `<spec-name>  <status>`. With `-c`, open criteria appear indented below:
+Each line is `<spec-name>  <status>`. With `-c`, open criteria appear numbered below:
 
 ```
 auth      in-progress
-  ┣━ Write token refresh logic
-  ┗━ Add integration tests
+  ┣━ 1. Write token refresh logic
+  ┗━ 2. Add integration tests
 parser    done
 ```
 
+The numbers from `spox -c` are the indices to use with `spox check`.
+
+## Checking off criteria
+
+`spox check <spec> <n>` marks the nth open criterion as done. If it was the last open criterion, the spec's status is automatically set to `completed`.
+
+```
+$ spox check auth 1
+checked: auth #1 — Write token refresh logic
+
+$ spox check auth 1
+checked: auth #1 — Add integration tests
+status:  auth → completed (all criteria done)
+```
+
+Always run `spox -c` first to get the current numbered list before calling `spox check`, since indices shift as criteria are checked off.
+
+## Setting status
+
+`spox status <spec> <value>` rewrites the `status:` line in the spec file.
+
+```
+$ spox status auth in-progress
+auth: draft → in-progress
+```
+
+Common values: `draft`, `ongoing`, `in-progress`, `completed`, `discarded`.
+
 ## Spec file format
 
-Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown.
+Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox -c`.
 
 ```markdown
 status: in-progress
@@ -47,7 +77,9 @@ Some notes about this spec.
 
 **Create a new spec** — write a `.md` file into `.spox/` with a `status:` first line and any relevant criteria as `- [ ]` items.
 
-**Update a spec** — edit the relevant `.spox/<name>.md` file directly.
+**Check off a criterion** — run `spox -c` to get the numbered list, then `spox check <spec> <n>`.
+
+**Update spec status** — run `spox status <spec> <value>`.
 
 **Install the skill into a project** — run `spox skill install`; this embeds the skill at `.claude/skills/spox/SKILL.md` relative to the git root.
 
