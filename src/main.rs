@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 const SKILL_MD: &str = include_str!("../skills/spox/SKILL.md");
+const SDD_MD: &str = include_str!("../skills/spox/sdd.md");
+const SPEC_TEMPLATE_MD: &str = include_str!("../skills/spox/spec-template.md");
 const FORMAT_MD: &str = include_str!("../format.md");
 
 struct Spec {
@@ -211,6 +213,14 @@ fn cmd_skill_install() {
         eprintln!("error: could not write {}: {}", dest_file.display(), e);
         std::process::exit(1);
     });
+
+    for (name, content) in [("sdd.md", SDD_MD), ("spec-template.md", SPEC_TEMPLATE_MD)] {
+        let path = dest_dir.join(name);
+        fs::write(&path, content).unwrap_or_else(|e| {
+            eprintln!("error: could not write {}: {}", path.display(), e);
+            std::process::exit(1);
+        });
+    }
 
     let old_file = dest_dir.join("SPOX.md");
     if old_file.exists() {
