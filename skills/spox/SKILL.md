@@ -13,6 +13,7 @@ description: Use this skill when the user wants to check, list, or update projec
 spox                        # list all specs with their status
 spox -c                     # also show numbered open criteria under each spec
 spox --criteria             # same as -c
+spox init                   # create .spox/ in the current directory (new projects)
 spox check <spec> <n>       # check off the nth open criterion (1-indexed, matches spox -c output)
 spox status <spec> <value>  # set the status field of a spec
 spox skill install          # copy this skill into the project's .claude/skills/
@@ -55,7 +56,7 @@ $ spox status auth in-progress
 auth: draft → in-progress
 ```
 
-Common values: `draft`, `ongoing`, `in-progress`, `completed`, `discarded`.
+Common values: `draft`, `ongoing`, `completed`, `discarded`.
 
 ## Spec file format
 
@@ -75,13 +76,20 @@ Some notes about this spec.
 
 **Check current spec status** — run `spox` or `spox -c` and summarise what you see for the user.
 
-**Create a new spec** — write a `.md` file into `.spox/` with a `status:` first line and any relevant criteria as `- [ ]` items.
+**Initialise spox in a new project** — run `spox init`. This creates `.spox/` and writes `.spox/.format.md`, which is the canonical reference for spec format, naming conventions, and valid statuses. Read it before creating specs in an unfamiliar project.
+
+**Create a new spec** — use the template in `spec-template.md` (in this skill directory). Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
 
 **Check off a criterion** — run `spox -c` to get the numbered list, then `spox check <spec> <n>`.
 
 **Update spec status** — run `spox status <spec> <value>`.
 
 **Install the skill into a project** — run `spox skill install`; this embeds the skill at `.claude/skills/spox/SKILL.md` relative to the git root.
+
+## Supporting files in this skill
+
+- `sdd.md` — what Spec-Driven Development is and the intended workflow. Read this when starting work in a spox project for the first time or when the user asks how to use spox.
+- `spec-template.md` — blank spec template. Use this when creating a new spec file.
 
 ## If spox isn't installed
 
