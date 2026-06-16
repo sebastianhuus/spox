@@ -274,7 +274,85 @@ fn status_group(status: &str) -> u8 {
     }
 }
 
+fn spox_repo_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let real = std::fs::canonicalize(&exe).ok()?;
+    // binary lives at $REPO/target/release/spox — go up three levels
+    real.parent()?.parent()?.parent().map(PathBuf::from)
+}
+
+fn last_check_path() -> Option<PathBuf> {
+    let home = env::var("HOME").ok()?;
+    Some(PathBuf::from(home).join(".cache").join("spox").join("last_check"))
+}
+
+fn should_check_updates() -> bool {
+    let path = match last_check_path() {
+        Some(p) => p,
+        None => return false,
+    };
+    fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .map(|d| d.as_secs() > 86400)
+        .unwrap_or(true)
+}
+
+fn mark_checked() {
+    if let Some(path) = last_check_path() {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&path, b"");
+    }
+}
+
+fn git_head(repo: &PathBuf) -> Option<Vec<u8>> {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .ok()
+        .map(|o| o.stdout)
+}
+
+fn maybe_self_update() {
+    if !should_check_updates() {
+        return;
+    }
+    mark_checked();
+
+    let repo = match spox_repo_dir() {
+        Some(d) if d.join(".git").exists() => d,
+        _ => return,
+    };
+
+    let before = git_head(&repo);
+
+    let ok = std::process::Command::new("git")
+        .args(["pull", "--quiet"])
+        .current_dir(&repo)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !ok {
+        return;
+    }
+
+    if before.is_some() && git_head(&repo) != before {
+        eprintln!("spox: new version pulled, rebuilding...");
+        let _ = std::process::Command::new("cargo")
+            .args(["build", "--release", "--quiet"])
+            .current_dir(&repo)
+            .status();
+        eprintln!("spox: updated");
+    }
+}
+
 fn main() {
+    maybe_self_update();
     let args: Vec<String> = env::args().skip(1).collect();
 
     match args.as_slice() {
