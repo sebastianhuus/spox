@@ -51,7 +51,19 @@ fn skill_status() -> SkillStatus {
     let new_path = skill_dir.join("SKILL.md");
     let old_path = skill_dir.join("SPOX.md");
     match fs::read_to_string(&new_path) {
-        Ok(installed) if installed == SKILL_MD => SkillStatus::Current,
+        Ok(installed) if installed == SKILL_MD => {
+            let supporting = [
+                ("sdd.md", SDD_MD),
+                ("spec-template.md", SPEC_TEMPLATE_MD),
+                ("check-chain.sh", CHECK_CHAIN_SH),
+            ];
+            let all_current = supporting.iter().all(|(name, expected)| {
+                fs::read_to_string(skill_dir.join(name))
+                    .map(|s| s == *expected)
+                    .unwrap_or(false)
+            });
+            if all_current { SkillStatus::Current } else { SkillStatus::Outdated }
+        }
         Ok(_) => SkillStatus::Outdated,
         Err(_) if old_path.exists() => SkillStatus::Outdated,
         Err(_) => SkillStatus::NotInstalled,
