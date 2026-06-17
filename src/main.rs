@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use serde_json::{json, Value};
 
 const SKILL_MD: &str = include_str!("../skills/spox/SKILL.md");
 const SDD_MD: &str = include_str!("../skills/spox/sdd.md");
@@ -212,6 +213,80 @@ fn cmd_set_status(spec_name: &str, value: &str) {
     println!("{}: {} → {}", spec_name, old_status, value);
 }
 
+fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
+    let settings_path = root.join(".claude").join("settings.json");
+
+    let mut settings: Value = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}));
+
+    // Merge permissions.allow
+    let spox_cmds = [
+        "Bash(spox)",
+        "Bash(spox -c)",
+        "Bash(spox --criteria)",
+        "Bash(spox check *)",
+        "Bash(spox status * *)",
+        "Bash(spox init)",
+        "Bash(spox skill install)",
+    ];
+    let allow = settings["permissions"]["allow"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut added_cmds = Vec::new();
+    let mut new_allow = allow.clone();
+    for cmd in spox_cmds {
+        let v = Value::String(cmd.to_string());
+        if !allow.contains(&v) {
+            new_allow.push(v);
+            added_cmds.push(cmd);
+        }
+    }
+    settings["permissions"]["allow"] = Value::Array(new_allow);
+
+    // Merge hooks.PreToolUse — add our hook if not already present
+    let hook_cmd = skill_dir.join("check-chain.sh").to_string_lossy().to_string();
+    let pre_tool_use = settings["hooks"]["PreToolUse"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let already_hooked = pre_tool_use.iter().any(|entry| {
+        entry["hooks"]
+            .as_array()
+            .map(|hooks| hooks.iter().any(|h| h["command"] == hook_cmd))
+            .unwrap_or(false)
+    });
+    let hook_added = if !already_hooked {
+        let entry = json!({
+            "matcher": "Bash",
+            "hooks": [{ "type": "command", "command": hook_cmd, "timeout": 5 }]
+        });
+        let mut new_hooks = pre_tool_use;
+        new_hooks.push(entry);
+        settings["hooks"]["PreToolUse"] = Value::Array(new_hooks);
+        true
+    } else {
+        false
+    };
+
+    let json = serde_json::to_string_pretty(&settings).unwrap_or_default();
+    fs::write(&settings_path, json + "\n").unwrap_or_else(|e| {
+        eprintln!("warning: could not write settings.json: {}", e);
+    });
+
+    if !added_cmds.is_empty() {
+        println!("settings: added {} allowed command(s) to permissions.allow", added_cmds.len());
+    }
+    if hook_added {
+        println!("settings: registered check-chain hook in hooks.PreToolUse");
+    }
+    if added_cmds.is_empty() && !hook_added {
+        println!("settings: already up to date");
+    }
+}
+
 fn cmd_skill_install() {
     let root = find_project_root();
     let dest_dir = root.join(".claude").join("skills").join("spox");
@@ -257,6 +332,7 @@ fn cmd_skill_install() {
     }
 
     println!("installed: {}", dest_file.display());
+    merge_settings(&root, &dest_dir);
 }
 
 fn cmd_init() {
