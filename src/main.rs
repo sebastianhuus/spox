@@ -226,6 +226,8 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
         "Bash(spox)",
         "Bash(spox -c)",
         "Bash(spox --criteria)",
+        "Bash(spox -c *)",
+        "Bash(spox --criteria *)",
         "Bash(spox check *)",
         "Bash(spox status * *)",
         "Bash(spox init)",
@@ -471,21 +473,24 @@ fn main() {
             cmd_set_status(b, c);
         }
         _ => {
-            if let Some(unknown) = args.iter().find(|a| *a != "--criteria" && *a != "-c") {
-                eprintln!("error: unknown argument `{}`", unknown);
-                eprintln!("usage: spox [-c|--criteria]");
+            let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
+            let positional: Vec<&str> = args.iter()
+                .filter(|a| *a != "--criteria" && *a != "-c")
+                .map(|s| s.as_str())
+                .collect();
+
+            if positional.len() > 1 {
+                eprintln!("error: unknown argument `{}`", positional[1]);
+                eprintln!("usage: spox [-c|--criteria] [<spec>]");
                 eprintln!("       spox check <spec> <n>");
                 eprintln!("       spox status <spec> <value>");
                 eprintln!("       spox skill install");
                 std::process::exit(1);
             }
 
-            let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
+            let filter_name = positional.first().copied();
 
-            let spox_dir = find_spox_dir().unwrap_or_else(|| {
-                eprintln!("error: no .spox directory found in this or any parent directory");
-                std::process::exit(1);
-            });
+            let spox_dir = require_spox_dir();
 
             let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
                 .unwrap_or_else(|e| {
@@ -498,6 +503,14 @@ fn main() {
                 .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
                 .filter_map(|p| parse_spec(&p))
                 .collect();
+
+            if let Some(name) = filter_name {
+                specs.retain(|s| s.name == name);
+                if specs.is_empty() {
+                    eprintln!("error: spec '{}' not found in {}", name, spox_dir.display());
+                    std::process::exit(1);
+                }
+            }
 
             if specs.is_empty() {
                 eprintln!("no specs found in {}", spox_dir.display());
