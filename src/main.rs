@@ -134,6 +134,47 @@ fn write_spec_content(path: &std::path::Path, content: &str) {
     });
 }
 
+fn spec_mtime(path: &std::path::Path) -> Option<u128> {
+    fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_nanos())
+}
+
+fn cache_path(spox_dir: &std::path::Path, spec_name: &str) -> std::path::PathBuf {
+    spox_dir.join(".cache").join(spec_name)
+}
+
+fn store_mtime_cache(spox_dir: &std::path::Path, spec_name: &str, spec_path: &std::path::Path) {
+    let cache_dir = spox_dir.join(".cache");
+    let _ = fs::create_dir_all(&cache_dir);
+    if let Some(t) = spec_mtime(spec_path) {
+        let _ = fs::write(cache_path(spox_dir, spec_name), t.to_string());
+    }
+}
+
+enum CacheCheck { Valid, Missing, Stale }
+
+fn check_mtime_cache(spox_dir: &std::path::Path, spec_name: &str, spec_path: &std::path::Path) -> CacheCheck {
+    let stored = fs::read_to_string(cache_path(spox_dir, spec_name))
+        .ok()
+        .and_then(|s| s.trim().parse::<u128>().ok());
+    match stored {
+        None => CacheCheck::Missing,
+        Some(stored_t) => match spec_mtime(spec_path) {
+            Some(current_t) if current_t == stored_t => CacheCheck::Valid,
+            _ => CacheCheck::Stale,
+        },
+    }
+}
+
+fn invalidate_cache(spox_dir: &std::path::Path, spec_name: &str) {
+    let _ = fs::remove_file(cache_path(spox_dir, spec_name));
+}
+
 fn cmd_check(spec_name: &str, n_str: &str) {
     let n: usize = n_str.parse().unwrap_or_else(|_| {
         eprintln!("error: criterion index must be a positive integer");
@@ -146,6 +187,19 @@ fn cmd_check(spec_name: &str, n_str: &str) {
 
     let spox_dir = require_spox_dir();
     let spec_path = find_spec_path(&spox_dir, spec_name);
+
+    match check_mtime_cache(&spox_dir, spec_name, &spec_path) {
+        CacheCheck::Missing => {
+            eprintln!("error: run `spox -c {}` before checking — spec has not been read yet", spec_name);
+            std::process::exit(1);
+        }
+        CacheCheck::Stale => {
+            eprintln!("error: '{}' has changed since you last read it — run `spox -c {}` to refresh", spec_name, spec_name);
+            std::process::exit(1);
+        }
+        CacheCheck::Valid => {}
+    }
+
     let content = read_spec_content(&spec_path);
 
     let lines: Vec<&str> = content.lines().collect();
@@ -182,6 +236,7 @@ fn cmd_check(spec_name: &str, n_str: &str) {
 
     let trailing_newline = if content.ends_with('\n') { "\n" } else { "" };
     write_spec_content(&spec_path, &(new_lines.join("\n") + trailing_newline));
+    invalidate_cache(&spox_dir, spec_name);
 
     println!("checked: {} #{} — {}", spec_name, n, criterion_text);
     if was_last {
@@ -534,6 +589,8 @@ fn main() {
                         println!("{} {}. {}", branch, i + 1, criterion);
                     }
                 }
+                let spec_path = spox_dir.join(format!("{}.md", spec.name));
+                store_mtime_cache(&spox_dir, &spec.name, &spec_path);
             }
 
             maybe_suggest_install();
