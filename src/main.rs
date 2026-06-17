@@ -175,9 +175,58 @@ fn invalidate_cache(spox_dir: &std::path::Path, spec_name: &str) {
     let _ = fs::remove_file(cache_path(spox_dir, spec_name));
 }
 
+fn cmd_check_all(spec_name: &str) {
+    let spox_dir = require_spox_dir();
+    let spec_path = find_spec_path(&spox_dir, spec_name);
+
+    match check_mtime_cache(&spox_dir, spec_name, &spec_path) {
+        CacheCheck::Missing => {
+            eprintln!("error: run `spox -c {}` before checking — spec has not been read yet", spec_name);
+            std::process::exit(1);
+        }
+        CacheCheck::Stale => {
+            eprintln!("error: '{}' has changed since you last read it — run `spox -c {}` to refresh", spec_name, spec_name);
+            std::process::exit(1);
+        }
+        CacheCheck::Valid => {}
+    }
+
+    let content = read_spec_content(&spec_path);
+    let lines: Vec<&str> = content.lines().collect();
+    let open_count = lines.iter().filter(|l| l.starts_with("- [ ] ")).count();
+
+    if open_count == 0 {
+        println!("{}: no open criteria", spec_name);
+        return;
+    }
+
+    let mut new_lines: Vec<String> = lines.iter().map(|l| {
+        if l.starts_with("- [ ] ") {
+            format!("- [x] {}", &l["- [ ] ".len()..])
+        } else {
+            l.to_string()
+        }
+    }).collect();
+
+    if new_lines[0].starts_with("status: ") {
+        new_lines[0] = "status: completed".to_string();
+    }
+
+    let trailing_newline = if content.ends_with('\n') { "\n" } else { "" };
+    write_spec_content(&spec_path, &(new_lines.join("\n") + trailing_newline));
+    invalidate_cache(&spox_dir, spec_name);
+
+    println!("checked: {} — all {} open criteria done", spec_name, open_count);
+    println!("status:  {} → completed", spec_name);
+}
+
 fn cmd_check(spec_name: &str, n_str: &str) {
+    if n_str == "all" {
+        return cmd_check_all(spec_name);
+    }
+
     let n: usize = n_str.parse().unwrap_or_else(|_| {
-        eprintln!("error: criterion index must be a positive integer");
+        eprintln!("error: criterion index must be a positive integer, or 'all'");
         std::process::exit(1);
     });
     if n == 0 {
@@ -284,6 +333,7 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
         "Bash(spox -c *)",
         "Bash(spox --criteria *)",
         "Bash(spox check *)",
+        "Bash(spox check * all)",
         "Bash(spox status * *)",
         "Bash(spox init)",
         "Bash(spox skill install)",
@@ -538,6 +588,7 @@ fn main() {
                 eprintln!("error: unknown argument `{}`", positional[1]);
                 eprintln!("usage: spox [-c|--criteria] [<spec>]");
                 eprintln!("       spox check <spec> <n>");
+                eprintln!("       spox check <spec> all");
                 eprintln!("       spox status <spec> <value>");
                 eprintln!("       spox skill install");
                 std::process::exit(1);
