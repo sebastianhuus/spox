@@ -8,6 +8,7 @@ const SKILL_MD: &str = include_str!("../skills/spox/SKILL.md");
 const SDD_MD: &str = include_str!("../skills/spox/sdd.md");
 const SPEC_TEMPLATE_MD: &str = include_str!("../skills/spox/spec-template.md");
 const CHECK_CHAIN_SH: &str = include_str!("../skills/spox/check-chain.sh");
+const NEW_SPEC_SKILL_MD: &str = include_str!("../skills/new-spec/SKILL.md");
 const FORMAT_MD: &str = include_str!("../format.md");
 
 struct Spec {
@@ -48,7 +49,8 @@ enum SkillStatus {
 }
 
 fn skill_status() -> SkillStatus {
-    let skill_dir = find_project_root().join(".claude").join("skills").join("spox");
+    let root = find_project_root();
+    let skill_dir = root.join(".claude").join("skills").join("spox");
     let new_path = skill_dir.join("SKILL.md");
     let old_path = skill_dir.join("SPOX.md");
     match fs::read_to_string(&new_path) {
@@ -63,7 +65,12 @@ fn skill_status() -> SkillStatus {
                     .map(|s| s == *expected)
                     .unwrap_or(false)
             });
-            if all_current { SkillStatus::Current } else { SkillStatus::Outdated }
+            let new_spec_current = fs::read_to_string(
+                root.join(".claude").join("skills").join("new-spec").join("SKILL.md"),
+            )
+            .map(|s| s == NEW_SPEC_SKILL_MD)
+            .unwrap_or(false);
+            if all_current && new_spec_current { SkillStatus::Current } else { SkillStatus::Outdated }
         }
         Ok(_) => SkillStatus::Outdated,
         Err(_) if old_path.exists() => SkillStatus::Outdated,
@@ -430,6 +437,17 @@ fn cmd_skill_install() {
         }
     }
 
+    let new_spec_dir = root.join(".claude").join("skills").join("new-spec");
+    fs::create_dir_all(&new_spec_dir).unwrap_or_else(|e| {
+        eprintln!("error: could not create {}: {}", new_spec_dir.display(), e);
+        std::process::exit(1);
+    });
+    let new_spec_file = new_spec_dir.join("SKILL.md");
+    let new_spec_status = write_skill_file(&new_spec_file, NEW_SPEC_SKILL_MD);
+    if new_spec_status != "unchanged" {
+        any_changed = true;
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -452,7 +470,12 @@ fn cmd_skill_install() {
     }
 
     if any_changed {
-        println!("{}: {}", main_status, dest_file.display());
+        if main_status != "unchanged" {
+            println!("{}: {}", main_status, dest_file.display());
+        }
+        if new_spec_status != "unchanged" {
+            println!("{}: {}", new_spec_status, new_spec_file.display());
+        }
     } else {
         println!("skill: already up to date");
     }
@@ -582,6 +605,9 @@ fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
     match args.as_slice() {
+        [a] if a == "version" || a == "--version" || a == "-V" => {
+            println!("spox {}", env!("CARGO_PKG_VERSION"));
+        }
         [a] if a == "init" => {
             cmd_init();
         }

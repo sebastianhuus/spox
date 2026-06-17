@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox -c *) Bash(spox --criteria *) Bash(spox check *) Bash(spox check * all)
+allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox -c *) Bash(spox --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -28,6 +28,7 @@ spox check <spec> <n>       # check off the nth open criterion (1-indexed, match
 spox check <spec> all       # check off all remaining open criteria at once
 spox status <spec> <value>  # set the status field of a spec
 spox skill install          # copy this skill into the project's .claude/skills/
+spox version                # print the installed version
 ```
 
 ## Reading the output
