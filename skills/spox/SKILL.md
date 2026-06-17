@@ -1,6 +1,14 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
+allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox check *)
+hooks:
+  PreToolUse:
+    - matcher: Bash
+      hooks:
+        - type: command
+          command: "${CLAUDE_SKILL_DIR}/check-chain.sh"
+          timeout: 5
 ---
 
 ## What spox does

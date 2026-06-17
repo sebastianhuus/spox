@@ -6,6 +6,7 @@ use std::time::SystemTime;
 const SKILL_MD: &str = include_str!("../skills/spox/SKILL.md");
 const SDD_MD: &str = include_str!("../skills/spox/sdd.md");
 const SPEC_TEMPLATE_MD: &str = include_str!("../skills/spox/spec-template.md");
+const CHECK_CHAIN_SH: &str = include_str!("../skills/spox/check-chain.sh");
 const FORMAT_MD: &str = include_str!("../format.md");
 
 struct Spec {
@@ -214,12 +215,25 @@ fn cmd_skill_install() {
         std::process::exit(1);
     });
 
-    for (name, content) in [("sdd.md", SDD_MD), ("spec-template.md", SPEC_TEMPLATE_MD)] {
+    for (name, content) in [("sdd.md", SDD_MD), ("spec-template.md", SPEC_TEMPLATE_MD), ("check-chain.sh", CHECK_CHAIN_SH)] {
         let path = dest_dir.join(name);
         fs::write(&path, content).unwrap_or_else(|e| {
             eprintln!("error: could not write {}: {}", path.display(), e);
             std::process::exit(1);
         });
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let hook_path = dest_dir.join("check-chain.sh");
+        if let Ok(meta) = fs::metadata(&hook_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&hook_path, perms).unwrap_or_else(|e| {
+                eprintln!("warning: could not chmod check-chain.sh: {}", e);
+            });
+        }
     }
 
     let old_file = dest_dir.join("SPOX.md");
