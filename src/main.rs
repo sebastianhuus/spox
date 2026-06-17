@@ -394,6 +394,22 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
     }
 }
 
+fn write_skill_file(path: &PathBuf, content: &str) -> &'static str {
+    let existing = fs::read_to_string(path).ok();
+    let status = match existing {
+        Some(ref s) if s == content => "unchanged",
+        Some(_) => "updated",
+        None => "installed",
+    };
+    if status != "unchanged" {
+        fs::write(path, content).unwrap_or_else(|e| {
+            eprintln!("error: could not write {}: {}", path.display(), e);
+            std::process::exit(1);
+        });
+    }
+    status
+}
+
 fn cmd_skill_install() {
     let root = find_project_root();
     let dest_dir = root.join(".claude").join("skills").join("spox");
@@ -404,17 +420,14 @@ fn cmd_skill_install() {
         std::process::exit(1);
     });
 
-    fs::write(&dest_file, SKILL_MD).unwrap_or_else(|e| {
-        eprintln!("error: could not write {}: {}", dest_file.display(), e);
-        std::process::exit(1);
-    });
+    let main_status = write_skill_file(&dest_file, SKILL_MD);
 
+    let mut any_changed = main_status != "unchanged";
     for (name, content) in [("sdd.md", SDD_MD), ("spec-template.md", SPEC_TEMPLATE_MD), ("check-chain.sh", CHECK_CHAIN_SH)] {
         let path = dest_dir.join(name);
-        fs::write(&path, content).unwrap_or_else(|e| {
-            eprintln!("error: could not write {}: {}", path.display(), e);
-            std::process::exit(1);
-        });
+        if write_skill_file(&path, content) != "unchanged" {
+            any_changed = true;
+        }
     }
 
     #[cfg(unix)]
@@ -438,7 +451,11 @@ fn cmd_skill_install() {
         println!("migrated: removed {}", old_file.display());
     }
 
-    println!("installed: {}", dest_file.display());
+    if any_changed {
+        println!("{}: {}", main_status, dest_file.display());
+    } else {
+        println!("skill: already up to date");
+    }
     merge_settings(&root, &dest_dir);
 }
 
