@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox check *)
+allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox -c *) Bash(spox --criteria *) Bash(spox check *)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -21,6 +21,8 @@ hooks:
 spox                        # list all specs with their status
 spox -c                     # also show numbered open criteria under each spec
 spox --criteria             # same as -c
+spox <spec>                 # show a single spec's status
+spox -c <spec>              # show a single spec's status and open criteria
 spox init                   # create .spox/ in the current directory (new projects)
 spox check <spec> <n>       # check off the nth open criterion (1-indexed, matches spox -c output)
 spox status <spec> <value>  # set the status field of a spec
@@ -82,7 +84,7 @@ Some notes about this spec.
 
 ## Common tasks
 
-**Check current spec status** — run `spox` or `spox -c` and summarise what you see for the user.
+**Check current spec status** — run `spox` or `spox -c` for the full dashboard, or `spox -c <spec>` to focus on one spec.
 
 **Initialise spox in a new project** — run `spox init`. This creates `.spox/` and writes `.spox/.format.md`, which is the canonical reference for spec format, naming conventions, and valid statuses. Read it before creating specs in an unfamiliar project.
 

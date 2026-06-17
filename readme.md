@@ -13,6 +13,8 @@ I was missing spec driven development from Kiro so I made my own little cli. Pro
 ```
 spox                        # list all specs with their status
 spox -c / --criteria        # also show numbered open criteria under each spec
+spox <spec>                 # show a single spec's status
+spox -c <spec>              # show a single spec's status and open criteria
 spox init                   # create .spox/ in the current directory
 spox check <spec> <n>       # check off the nth open criterion (auto-completes spec when last one is checked)
 spox status <spec> <value>  # set the status field of a spec
