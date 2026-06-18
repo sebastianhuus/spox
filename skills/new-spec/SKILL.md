@@ -8,7 +8,7 @@ description: Create a new spox spec. Use when the user wants to add a spec, trac
 
 ## Project format conventions
 
-!`f="$(git rev-parse --show-toplevel 2>/dev/null)/.spox/.format.md"; test -f "$f" && cat "$f" || echo "(no .format.md — use defaults)"`
+!`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.spox/.format.md" 2>/dev/null || echo "(no .format.md — use defaults)"`
 
 ## Instructions
 
