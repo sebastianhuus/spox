@@ -7,18 +7,19 @@ I was missing spec driven development from Kiro so I made my own little cli. Pro
 - `spox` will traverse current repo/folder until it finds `.spox`, then list all specs (md files) in that folder.
   - specs are sorted by status group: active first, then draft/backlog, then completed
   - each spec is prefixed with a status, which will also be listed in the tool output
-- `spox -c` / `spox --criteria` lists open tasks for a spec. A task is marked with `- [ ]` in markdown and checked off with `- [x]`
+- `spox -c` / `spox --criteria` lists open criteria for a spec. A criterion is marked with `- [ ]` in markdown and checked off with `- [x]`
 
 **Commands**
 ```
-spox                        # list all specs with their status
-spox -c / --criteria        # also show numbered open criteria under each spec
-spox <spec>                 # show a single spec's status
-spox -c <spec>              # show a single spec's status and open criteria
-spox init                   # create .spox/ in the current directory
-spox check <spec> <n>       # check off the nth open criterion (auto-completes spec when last one is checked)
-spox status <spec> <value>  # set the status field of a spec
-spox skill install          # install the Claude Code skill into .claude/skills/
+spox                           # list all specs with their status
+spox -c / --criteria           # also show labelled open criteria under each spec
+spox <spec>                    # show a single spec's status
+spox -c <spec>                 # show a single spec's status and open criteria
+spox init                      # create .spox/ in the current directory
+spox check <spec> <label>      # check off the criterion with the given label (stable across reorders)
+spox check <spec> <n>          # check off the nth open criterion (positional fallback)
+spox status <spec> <value>     # set the status field of a spec
+spox skill install             # install the Claude Code skill into .claude/skills/
 ```
 
 **Sample output**
@@ -37,10 +38,10 @@ game-scaffold              completed
 ```
 > spox -c
 map-generation             draft
-  ┣━ 1. Generated map has at least three visually distinct terrain regions
-  ┣━ 2. No two adjacent runs produce the same map (random seed)
-  ┣━ 3. Map generates in under one second on first load
-  ┗━ 4. Swapping in a new `TileKind` still requires only one variant + one path mapping
+  ┣━ [a1b2] Generated map has at least three visually distinct terrain regions
+  ┣━ [c3d4] No two adjacent runs produce the same map (random seed)
+  ┣━ [e5f6] Map generates in under one second on first load
+  ┗━ [a7b8] Swapping in a new `TileKind` still requires only one variant + one path mapping
 ```
 
 **Claude Code integration**

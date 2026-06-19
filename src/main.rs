@@ -141,6 +141,22 @@ fn write_spec_content(path: &std::path::Path, content: &str) {
     });
 }
 
+fn criterion_label(text: &str) -> String {
+    // FNV-1a 32-bit, XOR-folded to 16 bits → 4 lowercase hex chars.
+    // Stable as long as criterion text doesn't change; survives reordering and partial checks.
+    let mut h: u32 = 2166136261;
+    for b in text.bytes() {
+        h ^= b as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    let folded = ((h >> 16) ^ (h & 0xFFFF)) as u16;
+    format!("{:04x}", folded)
+}
+
+fn is_hex_label(s: &str) -> bool {
+    s.len() == 4 && s.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+}
+
 fn spec_mtime(path: &std::path::Path) -> Option<u128> {
     fs::metadata(path)
         .ok()?
@@ -232,12 +248,21 @@ fn cmd_check(spec_name: &str, n_str: &str) {
         return cmd_check_all(spec_name);
     }
 
-    let n: usize = n_str.parse().unwrap_or_else(|_| {
-        eprintln!("error: criterion index must be a positive integer, or 'all'");
-        std::process::exit(1);
-    });
-    if n == 0 {
-        eprintln!("error: criterion index starts at 1");
+    let use_label = is_hex_label(n_str);
+    let n_pos: Option<usize> = if use_label {
+        None
+    } else {
+        match n_str.parse::<usize>() {
+            Ok(0) => {
+                eprintln!("error: criterion index starts at 1");
+                std::process::exit(1);
+            }
+            Ok(n) => Some(n),
+            Err(_) => None,
+        }
+    };
+    if !use_label && n_pos.is_none() {
+        eprintln!("error: criterion must be a 4-char hex label (e.g. a3f2) from `spox -c`, a position number, or 'all'");
         std::process::exit(1);
     }
 
@@ -257,31 +282,51 @@ fn cmd_check(spec_name: &str, n_str: &str) {
     }
 
     let content = read_spec_content(&spec_path);
-
     let lines: Vec<&str> = content.lines().collect();
     let total_open = lines.iter().filter(|l| l.starts_with("- [ ] ")).count();
 
-    let mut open_count = 0;
-    let mut target_idx: Option<usize> = None;
-    for (i, line) in lines.iter().enumerate() {
-        if line.starts_with("- [ ] ") {
-            open_count += 1;
-            if open_count == n {
-                target_idx = Some(i);
-                break;
+    let (target, criterion_text) = if use_label {
+        let mut matches: Vec<(usize, String)> = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if let Some(text) = line.strip_prefix("- [ ] ") {
+                if criterion_label(text) == n_str {
+                    matches.push((i, text.to_string()));
+                }
             }
         }
-    }
+        match matches.len() {
+            0 => {
+                eprintln!("error: no open criterion with label '{}' in spec '{}'", n_str, spec_name);
+                std::process::exit(1);
+            }
+            1 => matches.remove(0),
+            _ => {
+                eprintln!("error: label '{}' matches {} criteria — use a position number instead", n_str, matches.len());
+                std::process::exit(1);
+            }
+        }
+    } else {
+        let n = n_pos.unwrap();
+        let mut open_count = 0;
+        let mut found: Option<(usize, String)> = None;
+        for (i, line) in lines.iter().enumerate() {
+            if line.starts_with("- [ ] ") {
+                open_count += 1;
+                if open_count == n {
+                    found = Some((i, line.strip_prefix("- [ ] ").unwrap_or("").to_string()));
+                    break;
+                }
+            }
+        }
+        found.unwrap_or_else(|| {
+            eprintln!(
+                "error: spec '{}' has {} open criterion/criteria (you asked for #{})",
+                spec_name, total_open, n
+            );
+            std::process::exit(1);
+        })
+    };
 
-    let target = target_idx.unwrap_or_else(|| {
-        eprintln!(
-            "error: spec '{}' has {} open criterion/criteria (you asked for #{})",
-            spec_name, total_open, n
-        );
-        std::process::exit(1);
-    });
-
-    let criterion_text = lines[target].strip_prefix("- [ ] ").unwrap_or("").to_string();
     let mut new_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
     new_lines[target] = format!("- [x] {}", criterion_text);
 
@@ -294,7 +339,8 @@ fn cmd_check(spec_name: &str, n_str: &str) {
     write_spec_content(&spec_path, &(new_lines.join("\n") + trailing_newline));
     invalidate_cache(&spox_dir, spec_name);
 
-    println!("checked: {} #{} — {}", spec_name, n, criterion_text);
+    let label = criterion_label(&criterion_text);
+    println!("checked: {} [{}] — {}", spec_name, label, criterion_text);
     if was_last {
         println!("status:  {} → completed (all criteria done)", spec_name);
     }
@@ -678,9 +724,20 @@ fn main() {
                 println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
                 if show_criteria {
                     let n = spec.open_criteria.len();
+                    let labels: Vec<String> = spec.open_criteria.iter()
+                        .map(|c| criterion_label(c))
+                        .collect();
+                    let has_collision = {
+                        let mut seen = std::collections::HashSet::new();
+                        labels.iter().any(|l| !seen.insert(l.clone()))
+                    };
                     for (i, criterion) in spec.open_criteria.iter().enumerate() {
                         let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
-                        println!("{} {}. {}", branch, i + 1, criterion);
+                        if has_collision {
+                            println!("{} {}. [{}] {}", branch, i + 1, labels[i], criterion);
+                        } else {
+                            println!("{} [{}] {}", branch, labels[i], criterion);
+                        }
                     }
                 }
                 let spec_path = spox_dir.join(format!("{}.md", spec.name));

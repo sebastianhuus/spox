@@ -8,7 +8,7 @@ SDD is a lightweight discipline: **write the spec before you write the code**. T
 
 2. **Start work** — set status to `ongoing` (`spox status <spec> ongoing`). This signals active implementation.
 
-3. **Check off criteria as they're met** — `spox check <spec> <n>`. When the last criterion is checked, status automatically becomes `completed`.
+3. **Check off criteria as they're met** — `spox check <spec> <label>` using the label shown by `spox -c`. When the last criterion is checked, status automatically becomes `completed`.
 
 4. **Discard if the approach is abandoned** — `spox status <spec> discarded`. Keep the file; it's useful context.
 

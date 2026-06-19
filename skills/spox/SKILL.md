@@ -18,31 +18,32 @@ hooks:
 ## Commands
 
 ```
-spox                        # list all specs with their status
-spox -c                     # also show numbered open criteria under each spec
-spox --criteria             # same as -c
-spox <spec>                 # show a single spec's status
-spox -c <spec>              # show a single spec's status and open criteria
-spox init                   # create .spox/ in the current directory (new projects)
-spox check <spec> <n>       # check off the nth open criterion (1-indexed, matches spox -c output)
-spox check <spec> all       # check off all remaining open criteria at once
-spox status <spec> <value>  # set the status field of a spec
-spox skill install          # copy this skill into the project's .claude/skills/
-spox version                # print the installed version
+spox                           # list all specs with their status
+spox -c                        # also show labelled open criteria under each spec
+spox --criteria                # same as -c
+spox <spec>                    # show a single spec's status
+spox -c <spec>                 # show a single spec's status and open criteria
+spox init                      # create .spox/ in the current directory (new projects)
+spox check <spec> <label>      # check off the criterion with the given label (stable, preferred)
+spox check <spec> <n>          # check off the nth open criterion (positional — avoid in scripts)
+spox check <spec> all          # check off all remaining open criteria at once
+spox status <spec> <value>     # set the status field of a spec
+spox skill install             # copy this skill into the project's .claude/skills/
+spox version                   # print the installed version
 ```
 
 ## Reading the output
 
-Each line is `<spec-name>  <status>`. With `-c`, open criteria appear numbered below:
+Each line is `<spec-name>  <status>`. With `-c`, open criteria appear labelled below:
 
 ```
 auth      in-progress
-  ┣━ 1. Write token refresh logic
-  ┗━ 2. Add integration tests
+  ┣━ [a3f2] Write token refresh logic
+  ┗━ [b8c1] Add integration tests
 parser    done
 ```
 
-The numbers from `spox -c` are the indices to use with `spox check`.
+Each `[label]` is a stable 4-char hex identifier derived from the criterion text. Labels survive reordering and partial checks — **always use labels with `spox check`, never position numbers**.
 
 ## Checking off criteria
 
@@ -54,14 +55,25 @@ checked: auth — all 2 open criteria done
 status:  auth → completed
 ```
 
-`spox check <spec> <n>` marks a single criterion (useful mid-session for partial completions). If it was the last open criterion, status is set to `completed` automatically.
+`spox check <spec> <label>` marks a single criterion by its stable label. The label comes from `spox -c` output and stays the same even after other criteria are checked off or the list is reordered.
 
 ```
-$ spox check auth 1
-checked: auth #1 — Write token refresh logic
+$ spox check auth a3f2
+checked: auth [a3f2] — Write token refresh logic
 ```
 
-Both forms require reading the spec first — run `spox -c <spec>` before checking, since the mtime guard will reject stale checks. After `check all`, the cache is invalidated, so re-read before any further checks.
+All check forms require reading the spec first — run `spox -c <spec>` before checking, since the mtime guard will reject stale checks. After each check, the cache is invalidated, so re-read before the next one.
+
+**Never check multiple criteria in one chained command.** Each check must be a separate tool call:
+```
+# right
+spox check auth a3f2
+spox -c auth
+spox check auth b8c1
+
+# wrong — second label resolves from stale cache
+spox check auth a3f2 && spox check auth b8c1
+```
 
 ## Setting status
 
@@ -96,7 +108,7 @@ Some notes about this spec.
 
 **Create a new spec** — use the template in `spec-template.md` (in this skill directory). Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
 
-**Check off all criteria** — run `spox -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <n>` for partial mid-session completions.
+**Check off all criteria** — run `spox -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <label>` for partial mid-session completions — the label comes from `spox -c` output and is stable across checks.
 
 **Update spec status** — run `spox status <spec> <value>`.
 
