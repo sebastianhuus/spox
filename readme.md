@@ -18,8 +18,10 @@ spox -c <spec>                 # show a single spec's status and open criteria
 spox init                      # create .spox/ in the current directory
 spox check <spec> <label>      # check off the criterion with the given label (stable across reorders)
 spox check <spec> <n>          # check off the nth open criterion (positional fallback)
+spox check <spec> all          # check off all remaining open criteria at once
 spox status <spec> <value>     # set the status field of a spec
 spox skill install             # install the Claude Code skill into .claude/skills/
+spox version                   # print the installed version
 ```
 
 **Sample output**

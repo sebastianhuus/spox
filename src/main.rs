@@ -198,17 +198,34 @@ fn invalidate_cache(spox_dir: &std::path::Path, spec_name: &str) {
     let _ = fs::remove_file(cache_path(spox_dir, spec_name));
 }
 
+fn print_criteria(open_criteria: &[String]) {
+    let n = open_criteria.len();
+    let labels: Vec<String> = open_criteria.iter().map(|c| criterion_label(c)).collect();
+    let has_collision = {
+        let mut seen = std::collections::HashSet::new();
+        labels.iter().any(|l| !seen.insert(l.clone()))
+    };
+    for (i, criterion) in open_criteria.iter().enumerate() {
+        let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
+        if has_collision {
+            println!("{} {}. [{}] {}", branch, i + 1, labels[i], criterion);
+        } else {
+            println!("{} [{}] {}", branch, labels[i], criterion);
+        }
+    }
+}
+
 fn cmd_check_all(spec_name: &str) {
     let spox_dir = require_spox_dir();
     let spec_path = find_spec_path(&spox_dir, spec_name);
 
     match check_mtime_cache(&spox_dir, spec_name, &spec_path) {
         CacheCheck::Missing => {
-            eprintln!("error: run `spox -c {}` before checking — spec has not been read yet", spec_name);
+            eprintln!("error: run `spox view -c {}` before checking — spec has not been read yet", spec_name);
             std::process::exit(1);
         }
         CacheCheck::Stale => {
-            eprintln!("error: '{}' has changed since you last read it — run `spox -c {}` to refresh", spec_name, spec_name);
+            eprintln!("error: '{}' has changed since you last read it — run `spox view -c {}` to refresh", spec_name, spec_name);
             std::process::exit(1);
         }
         CacheCheck::Valid => {}
@@ -262,7 +279,7 @@ fn cmd_check(spec_name: &str, n_str: &str) {
         }
     };
     if !use_label && n_pos.is_none() {
-        eprintln!("error: criterion must be a 4-char hex label (e.g. a3f2) from `spox -c`, a position number, or 'all'");
+        eprintln!("error: criterion must be a 4-char hex label (e.g. a3f2) from `spox view -c`, a position number, or 'all'");
         std::process::exit(1);
     }
 
@@ -271,11 +288,11 @@ fn cmd_check(spec_name: &str, n_str: &str) {
 
     match check_mtime_cache(&spox_dir, spec_name, &spec_path) {
         CacheCheck::Missing => {
-            eprintln!("error: run `spox -c {}` before checking — spec has not been read yet", spec_name);
+            eprintln!("error: run `spox view -c {}` before checking — spec has not been read yet", spec_name);
             std::process::exit(1);
         }
         CacheCheck::Stale => {
-            eprintln!("error: '{}' has changed since you last read it — run `spox -c {}` to refresh", spec_name, spec_name);
+            eprintln!("error: '{}' has changed since you last read it — run `spox view -c {}` to refresh", spec_name, spec_name);
             std::process::exit(1);
         }
         CacheCheck::Valid => {}
@@ -380,11 +397,12 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
 
     // Merge permissions.allow
     let spox_cmds = [
-        "Bash(spox)",
-        "Bash(spox -c)",
-        "Bash(spox --criteria)",
-        "Bash(spox -c *)",
-        "Bash(spox --criteria *)",
+        "Bash(spox list)",
+        "Bash(spox list -c)",
+        "Bash(spox list --criteria)",
+        "Bash(spox view *)",
+        "Bash(spox view -c *)",
+        "Bash(spox view --criteria *)",
         "Bash(spox check *)",
         "Bash(spox check * all)",
         "Bash(spox status * *)",
@@ -646,6 +664,89 @@ fn maybe_self_update() {
     }
 }
 
+fn cmd_list(show_criteria: bool, filter: Option<&str>) {
+    let spox_dir = require_spox_dir();
+
+    let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
+        .unwrap_or_else(|e| {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        })
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| !n.starts_with('.')).unwrap_or(false))
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
+        .filter_map(|p| parse_spec(&p))
+        .collect();
+
+    if let Some(name) = filter {
+        specs.retain(|s| s.name == name);
+        if specs.is_empty() {
+            eprintln!("error: spec '{}' not found in {}", name, spox_dir.display());
+            std::process::exit(1);
+        }
+    }
+
+    if specs.is_empty() {
+        eprintln!("no specs found in {}", spox_dir.display());
+        maybe_suggest_install();
+        return;
+    }
+
+    specs.sort_by(|a, b| {
+        status_group(&a.status)
+            .cmp(&status_group(&b.status))
+            .then(a.name.cmp(&b.name))
+    });
+
+    let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
+    for spec in &specs {
+        println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+        if show_criteria {
+            print_criteria(&spec.open_criteria);
+        }
+        let spec_path = spox_dir.join(format!("{}.md", spec.name));
+        store_mtime_cache(&spox_dir, &spec.name, &spec_path);
+    }
+
+    maybe_suggest_install();
+}
+
+fn cmd_view_raw(spec_name: &str) {
+    let spox_dir = require_spox_dir();
+    let spec_path = find_spec_path(&spox_dir, spec_name);
+    let content = read_spec_content(&spec_path);
+    print!("{}", content);
+}
+
+fn cmd_view_criteria(spec_name: &str) {
+    let spox_dir = require_spox_dir();
+    let spec_path = find_spec_path(&spox_dir, spec_name);
+    let spec = parse_spec(&spec_path).unwrap_or_else(|| {
+        eprintln!("error: could not parse spec '{}'", spec_name);
+        std::process::exit(1);
+    });
+    println!("{:<width$}  {}", spec.name, spec.status, width = spec.name.len());
+    print_criteria(&spec.open_criteria);
+    store_mtime_cache(&spox_dir, spec_name, &spec_path);
+    maybe_suggest_install();
+}
+
+fn cmd_help() {
+    println!("usage: spox <command> [options]");
+    println!();
+    println!("Commands:");
+    println!("  list [-c]              list all specs (use -c to show open criteria)");
+    println!("  view [-c] <spec>       show a spec (raw file, or -c for criteria dashboard)");
+    println!("  check <spec> <label>   check off a criterion by stable hex label");
+    println!("  check <spec> all       check off all remaining open criteria");
+    println!("  status <spec> <value>  set a spec's status field");
+    println!("  init                   create .spox/ in the current directory");
+    println!("  skill install          install the spox skill into .claude/skills/");
+    println!("  version                print the installed version");
+    println!("  help                   show this message");
+}
+
 fn main() {
     maybe_self_update();
     let args: Vec<String> = env::args().skip(1).collect();
@@ -666,85 +767,52 @@ fn main() {
         [a, b, c] if a == "status" => {
             cmd_set_status(b, c);
         }
+        [a] if a == "list" => {
+            cmd_list(false, None);
+        }
+        [a, b] if a == "list" && (b == "-c" || b == "--criteria") => {
+            cmd_list(true, None);
+        }
+        [a, b] if a == "view" => {
+            cmd_view_raw(b);
+        }
+        [a, b, c] if a == "view" && (b == "-c" || b == "--criteria") => {
+            cmd_view_criteria(c);
+        }
+        [a] if a == "help" || a == "--help" || a == "-h" => {
+            cmd_help();
+        }
         _ => {
+            // Deprecated positional forms (bare `spox` and `spox <spec>`) plus error handling.
             let show_criteria = args.iter().any(|a| a == "--criteria" || a == "-c");
             let positional: Vec<&str> = args.iter()
                 .filter(|a| *a != "--criteria" && *a != "-c")
                 .map(|s| s.as_str())
                 .collect();
 
-            if positional.len() > 1 {
-                eprintln!("error: unknown argument `{}`", positional[1]);
-                eprintln!("usage: spox [-c|--criteria] [<spec>]");
-                eprintln!("       spox check <spec> <n>");
-                eprintln!("       spox check <spec> all");
-                eprintln!("       spox status <spec> <value>");
-                eprintln!("       spox skill install");
+            // Known commands that didn't match their arm = wrong number of arguments.
+            let known_cmds = ["check", "status", "skill", "list", "view", "init", "version", "help"];
+            let first_pos = positional.first().copied();
+            if positional.len() > 1 || first_pos.map(|p| known_cmds.contains(&p)).unwrap_or(false) {
+                eprintln!("error: unexpected arguments");
+                eprintln!("run `spox help` for usage");
                 std::process::exit(1);
             }
 
-            let filter_name = positional.first().copied();
-
-            let spox_dir = require_spox_dir();
-
-            let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
-                .unwrap_or_else(|e| {
-                    eprintln!("error: {}", e);
-                    std::process::exit(1);
-                })
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| !n.starts_with('.')).unwrap_or(false))
-                .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
-                .filter_map(|p| parse_spec(&p))
-                .collect();
-
-            if let Some(name) = filter_name {
-                specs.retain(|s| s.name == name);
-                if specs.is_empty() {
-                    eprintln!("error: spec '{}' not found in {}", name, spox_dir.display());
-                    std::process::exit(1);
+            match first_pos {
+                None => {
+                    eprintln!("warning: bare `spox` is deprecated — use `spox list`");
+                    cmd_list(show_criteria, None);
                 }
-            }
-
-            if specs.is_empty() {
-                eprintln!("no specs found in {}", spox_dir.display());
-                maybe_suggest_install();
-                return;
-            }
-
-            specs.sort_by(|a, b| {
-                status_group(&a.status)
-                    .cmp(&status_group(&b.status))
-                    .then(a.name.cmp(&b.name))
-            });
-
-            let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
-            for spec in &specs {
-                println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
-                if show_criteria {
-                    let n = spec.open_criteria.len();
-                    let labels: Vec<String> = spec.open_criteria.iter()
-                        .map(|c| criterion_label(c))
-                        .collect();
-                    let has_collision = {
-                        let mut seen = std::collections::HashSet::new();
-                        labels.iter().any(|l| !seen.insert(l.clone()))
-                    };
-                    for (i, criterion) in spec.open_criteria.iter().enumerate() {
-                        let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
-                        if has_collision {
-                            println!("{} {}. [{}] {}", branch, i + 1, labels[i], criterion);
-                        } else {
-                            println!("{} [{}] {}", branch, labels[i], criterion);
-                        }
+                Some(name) => {
+                    if show_criteria {
+                        eprintln!("warning: `spox -c {}` is deprecated — use `spox view -c {}`", name, name);
+                    } else {
+                        eprintln!("warning: `spox {}` is deprecated — use `spox view {}`", name, name);
                     }
+                    cmd_list(show_criteria, Some(name));
                 }
-                let spec_path = spox_dir.join(format!("{}.md", spec.name));
-                store_mtime_cache(&spox_dir, &spec.name, &spec_path);
             }
-
-            maybe_suggest_install();
         }
     }
 }

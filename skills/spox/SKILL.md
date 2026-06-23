@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox) Bash(spox -c) Bash(spox --criteria) Bash(spox -c *) Bash(spox --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
+allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -18,11 +18,11 @@ hooks:
 ## Commands
 
 ```
-spox                           # list all specs with their status
-spox -c                        # also show labelled open criteria under each spec
-spox --criteria                # same as -c
-spox <spec>                    # show a single spec's status
-spox -c <spec>                 # show a single spec's status and open criteria
+spox list                      # list all specs with their status
+spox list -c                   # also show labelled open criteria under each spec
+spox list --criteria           # same as -c
+spox view <spec>               # show the full raw spec file
+spox view -c <spec>            # show a single spec's open criteria in dashboard format
 spox init                      # create .spox/ in the current directory (new projects)
 spox check <spec> <label>      # check off the criterion with the given label (stable, preferred)
 spox check <spec> <n>          # check off the nth open criterion (positional — avoid in scripts)
@@ -30,11 +30,12 @@ spox check <spec> all          # check off all remaining open criteria at once
 spox status <spec> <value>     # set the status field of a spec
 spox skill install             # copy this skill into the project's .claude/skills/
 spox version                   # print the installed version
+spox help                      # show usage
 ```
 
 ## Reading the output
 
-Each line is `<spec-name>  <status>`. With `-c`, open criteria appear labelled below:
+Each line is `<spec-name>  <status>`. With `list -c`, open criteria appear labelled below:
 
 ```
 auth      in-progress
@@ -55,20 +56,20 @@ checked: auth — all 2 open criteria done
 status:  auth → completed
 ```
 
-`spox check <spec> <label>` marks a single criterion by its stable label. The label comes from `spox -c` output and stays the same even after other criteria are checked off or the list is reordered.
+`spox check <spec> <label>` marks a single criterion by its stable label. The label comes from `spox view -c` output and stays the same even after other criteria are checked off or the list is reordered.
 
 ```
 $ spox check auth a3f2
 checked: auth [a3f2] — Write token refresh logic
 ```
 
-All check forms require reading the spec first — run `spox -c <spec>` before checking, since the mtime guard will reject stale checks. After each check, the cache is invalidated, so re-read before the next one.
+All check forms require reading the spec first — run `spox view -c <spec>` before checking, since the mtime guard will reject stale checks. After each check, the cache is invalidated, so re-read before the next one.
 
 **Never check multiple criteria in one chained command.** Each check must be a separate tool call:
 ```
 # right
 spox check auth a3f2
-spox -c auth
+spox view -c auth
 spox check auth b8c1
 
 # wrong — second label resolves from stale cache
@@ -88,7 +89,7 @@ Common values: `draft`, `ongoing`, `completed`, `discarded`.
 
 ## Spec file format
 
-Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox -c`.
+Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox view -c`.
 
 ```markdown
 status: in-progress
@@ -102,13 +103,13 @@ Some notes about this spec.
 
 ## Common tasks
 
-**Check current spec status** — run `spox` or `spox -c` for the full dashboard, or `spox -c <spec>` to focus on one spec.
+**Check current spec status** — run `spox list` or `spox list -c` for the full dashboard, or `spox view -c <spec>` to focus on one spec.
 
 **Initialise spox in a new project** — run `spox init`. This creates `.spox/` and writes `.spox/.format.md`, which is the canonical reference for spec format, naming conventions, and valid statuses. Read it before creating specs in an unfamiliar project.
 
 **Create a new spec** — use the template in `spec-template.md` (in this skill directory). Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
 
-**Check off all criteria** — run `spox -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <label>` for partial mid-session completions — the label comes from `spox -c` output and is stable across checks.
+**Check off all criteria** — run `spox view -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <label>` for partial mid-session completions — the label comes from `spox view -c` output and is stable across checks.
 
 **Update spec status** — run `spox status <spec> <value>`.
 
