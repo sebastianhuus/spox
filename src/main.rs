@@ -387,6 +387,37 @@ fn cmd_set_status(spec_name: &str, value: &str) {
     println!("{}: {} → {}", spec_name, old_status, value);
 }
 
+fn allow_check_cmd(project_dir: &PathBuf) {
+    let claude_dir = project_dir.join(".claude");
+    let settings_path = claude_dir.join("settings.json");
+
+    let mut settings: Value = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}));
+
+    let check_cmd = Value::String("Bash(spox check *)".to_string());
+    let mut allow = settings["permissions"]["allow"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if !allow.contains(&check_cmd) {
+        allow.push(check_cmd);
+        settings["permissions"]["allow"] = Value::Array(allow);
+
+        if let Err(e) = fs::create_dir_all(&claude_dir) {
+            eprintln!("warning: could not create .claude/: {}", e);
+            return;
+        }
+        let json = serde_json::to_string_pretty(&settings).unwrap_or_default();
+        fs::write(&settings_path, json + "\n").unwrap_or_else(|e| {
+            eprintln!("warning: could not write settings.json: {}", e);
+        });
+        println!("settings: allowed Bash(spox check *)");
+    }
+}
+
 fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
     let settings_path = root.join(".claude").join("settings.json");
 
@@ -572,6 +603,9 @@ fn cmd_init() {
 
     println!("created: {}", spox_dir.display());
     println!("created: {}", format_file.display());
+
+    let project_dir = spox_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| spox_dir.clone());
+    allow_check_cmd(&project_dir);
 }
 
 fn status_group(status: &str) -> u8 {
@@ -801,16 +835,16 @@ fn main() {
 
             match first_pos {
                 None => {
-                    eprintln!("warning: bare `spox` is deprecated — use `spox list`");
-                    cmd_list(show_criteria, None);
+                    eprintln!("error: bare `spox` is no longer supported — use `spox list`");
+                    std::process::exit(1);
                 }
                 Some(name) => {
                     if show_criteria {
-                        eprintln!("warning: `spox -c {}` is deprecated — use `spox view -c {}`", name, name);
+                        eprintln!("error: `spox -c {}` is no longer supported — use `spox view -c {}`", name, name);
                     } else {
-                        eprintln!("warning: `spox {}` is deprecated — use `spox view {}`", name, name);
+                        eprintln!("error: `spox {}` is no longer supported — use `spox view {}`", name, name);
                     }
-                    cmd_list(show_criteria, Some(name));
+                    std::process::exit(1);
                 }
             }
         }
