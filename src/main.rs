@@ -198,6 +198,11 @@ fn invalidate_cache(spox_dir: &std::path::Path, spec_name: &str) {
     let _ = fs::remove_file(cache_path(spox_dir, spec_name));
 }
 
+fn terminal_width() -> usize {
+    use terminal_size::{Width, terminal_size};
+    terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(80)
+}
+
 fn print_criteria(open_criteria: &[String]) {
     let n = open_criteria.len();
     let labels: Vec<String> = open_criteria.iter().map(|c| criterion_label(c)).collect();
@@ -205,12 +210,45 @@ fn print_criteria(open_criteria: &[String]) {
         let mut seen = std::collections::HashSet::new();
         labels.iter().any(|l| !seen.insert(l.clone()))
     };
+    let term_width = terminal_width();
     for (i, criterion) in open_criteria.iter().enumerate() {
-        let branch = if i + 1 == n { "  ┗━" } else { "  ┣━" };
-        if has_collision {
-            println!("{} {}. [{}] {}", branch, i + 1, labels[i], criterion);
+        let is_last = i + 1 == n;
+        let branch = if is_last { "  ┗━" } else { "  ┣━" };
+        let prefix = if has_collision {
+            format!("{} {}. [{}] ", branch, i + 1, labels[i])
         } else {
-            println!("{} [{}] {}", branch, labels[i], criterion);
+            format!("{} [{}] ", branch, labels[i])
+        };
+        // Continuation lines: ┃ at the branch column for non-last items, spaces for last
+        let indent: String = if is_last {
+            " ".repeat(prefix.chars().count())
+        } else {
+            format!("  ┃{}", " ".repeat(prefix.chars().count().saturating_sub(3)))
+        };
+        let text_width = term_width.saturating_sub(prefix.chars().count());
+        let words: Vec<&str> = criterion.split_whitespace().collect();
+        let mut line = String::new();
+        let mut first = true;
+        for word in &words {
+            if line.is_empty() {
+                line.push_str(word);
+            } else if line.len() + 1 + word.len() <= text_width {
+                line.push(' ');
+                line.push_str(word);
+            } else {
+                if first {
+                    println!("{}{}", prefix, line);
+                    first = false;
+                } else {
+                    println!("{}{}", indent, line);
+                }
+                line = word.to_string();
+            }
+        }
+        if first {
+            println!("{}{}", prefix, line);
+        } else {
+            println!("{}{}", indent, line);
         }
     }
 }
