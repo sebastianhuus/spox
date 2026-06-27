@@ -4,11 +4,11 @@ description: Create a new spox spec. Use when the user wants to add a spec, trac
 
 ## Current specs
 
-!`spox 2>/dev/null || echo "(no spox project found)"`
+!`spox list -c`
 
 ## Project format conventions
 
-!`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.spox/.format.md" 2>/dev/null || echo "(no .format.md — use defaults)"`
+!`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.spox/.format.md" 2>/dev/null`
 
 ## Instructions
 
@@ -34,4 +34,4 @@ status: draft
 [Design decisions, open questions, or implementation detail. Omit section if empty.]
 ```
 
-Fill in the template from the user's description. Write the result to `.spox/<name>.md`. After writing, run `spox <name>` to confirm it was picked up.
+Fill in the template from the user's description. Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.
