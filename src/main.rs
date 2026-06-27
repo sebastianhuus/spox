@@ -643,6 +643,45 @@ fn cmd_init() {
     println!("created: {}", format_file.display());
 
     let project_dir = spox_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| spox_dir.clone());
+
+    // Add .spox/.cache/ to .gitignore if we're inside a git repo.
+    let git_root = {
+        let mut dir = project_dir.clone();
+        loop {
+            if dir.join(".git").exists() {
+                break Some(dir);
+            }
+            if !dir.pop() {
+                break None;
+            }
+        }
+    };
+    if let Some(root) = git_root {
+        let gitignore = root.join(".gitignore");
+        let entry = ".spox/.cache/";
+        let existing = fs::read_to_string(&gitignore).unwrap_or_default();
+        let already_present = existing.lines().any(|l| l.trim() == entry);
+        if !already_present {
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&gitignore)
+                .unwrap_or_else(|e| {
+                    eprintln!("error: could not open {}: {}", gitignore.display(), e);
+                    std::process::exit(1);
+                });
+            if !existing.is_empty() && !existing.ends_with('\n') {
+                writeln!(file).unwrap_or(());
+            }
+            writeln!(file, "{}", entry).unwrap_or_else(|e| {
+                eprintln!("error: could not write {}: {}", gitignore.display(), e);
+                std::process::exit(1);
+            });
+            println!("updated: {}", gitignore.display());
+        }
+    }
+
     allow_check_cmd(&project_dir);
 }
 
