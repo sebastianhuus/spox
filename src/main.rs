@@ -194,6 +194,36 @@ fn terminal_width() -> usize {
     terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(80)
 }
 
+fn glow_available() -> bool {
+    env::var_os("PATH")
+        .map(|p| env::split_paths(&p).any(|dir| dir.join("glow").is_file()))
+        .unwrap_or(false)
+}
+
+fn use_glow() -> bool {
+    use std::io::IsTerminal;
+    env::var_os("SPOX_NO_GLOW").is_none()
+        && std::io::stdout().is_terminal()
+        && glow_available()
+}
+
+fn print_via_glow(content: &str) -> bool {
+    use std::io::Write;
+    let width = terminal_width();
+    let mut child = match std::process::Command::new("glow")
+        .args(["--width", &width.to_string(), "-"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(content.as_bytes());
+    }
+    child.wait().map(|s| s.success()).unwrap_or(false)
+}
+
 fn print_criteria(open_criteria: &[String]) {
     let n = open_criteria.len();
     let labels: Vec<String> = open_criteria.iter().map(|c| criterion_label(c)).collect();
@@ -820,6 +850,9 @@ fn cmd_view_raw(spec_name: &str) {
     let spox_dir = require_spox_dir();
     let spec_path = find_spec_path(&spox_dir, spec_name);
     let content = read_spec_content(&spec_path);
+    if use_glow() && print_via_glow(&content) {
+        return;
+    }
     print!("{}", content);
 }
 
