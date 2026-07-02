@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "spox"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "serde_json",
  "terminal_size",
