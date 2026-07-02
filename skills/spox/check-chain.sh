@@ -21,8 +21,11 @@ while IFS= read -r line; do
   STRIPPED+="$line"$'\n'
 done <<< "$COMMAND"
 
+# Strip quoted-string contents so ; or spox inside -m "..." or 'msg' don't trigger.
+UNQUOTED=$(printf '%s' "$STRIPPED" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+
 # Standalone spox calls (no chain operators) are fine — only inspect when chaining is present.
-printf '%s' "$STRIPPED" | grep -qE '(&&|\|\||;)' || exit 0
+printf '%s' "$UNQUOTED" | grep -qE '(&&|\|\||;)' || exit 0
 
 # Block only when spox is the actual executable — first token of any chain segment.
 # Avoids false positives where "spox" appears in a commit message, quoted arg, or heredoc body.
@@ -34,7 +37,7 @@ while IFS= read -r segment; do
     MATCHED_SEGMENT="$trimmed"
     break
   fi
-done < <(printf '%s' "$STRIPPED" | sed 's/&&/\n/g; s/||/\n/g; s/;/\n/g')
+done < <(printf '%s' "$UNQUOTED" | sed 's/&&/\n/g; s/||/\n/g; s/;/\n/g')
 
 if [ -n "$MATCHED_SEGMENT" ]; then
   jq -n --arg reason "Chained spox command blocked (matched: \"$MATCHED_SEGMENT\"). Each spox call must be a separate tool use — do not chain with &&, ||, or ;. Run the command alone so its output can be reviewed before the next call." '{
