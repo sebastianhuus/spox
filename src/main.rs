@@ -80,18 +80,9 @@ fn skill_status() -> SkillStatus {
 
 fn maybe_suggest_install() {
     match skill_status() {
-        SkillStatus::Current => {}
+        SkillStatus::Current | SkillStatus::NotInstalled => {}
         SkillStatus::Outdated => {
-            eprintln!("\ntip: spox skill is out of date — run `spox skill install` to update");
-        }
-        SkillStatus::NotInstalled => {
-            let show = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|d| d.as_secs() % 5 == 0)
-                .unwrap_or(false);
-            if show {
-                eprintln!("\ntip: run `spox skill install` to add the spox skill to Claude Code");
-            }
+            cmd_skill_install();
         }
     }
 }
@@ -604,10 +595,12 @@ fn cmd_skill_install() {
 
     if any_changed {
         if main_status != "unchanged" {
-            println!("{}: {}", main_status, dest_file.display());
+            let rel = dest_file.strip_prefix(&root).unwrap_or(&dest_file);
+            eprintln!("spox: skill {} {}", main_status, rel.display());
         }
         if new_spec_status != "unchanged" {
-            println!("{}: {}", new_spec_status, new_spec_file.display());
+            let rel = new_spec_file.strip_prefix(&root).unwrap_or(&new_spec_file);
+            eprintln!("spox: skill {} {}", new_spec_status, rel.display());
         }
     } else {
         println!("skill: already up to date");
