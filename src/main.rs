@@ -798,7 +798,7 @@ fn maybe_self_update() {
     }
 }
 
-fn cmd_list(show_criteria: bool, filter: Option<&str>) {
+fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
     let spox_dir = require_spox_dir();
 
     let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
@@ -821,8 +821,19 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>) {
         }
     }
 
+    if active_only {
+        specs.retain(|s| {
+            let lower = s.status.to_lowercase();
+            status_group(&s.status) != 2 && !lower.contains("discard")
+        });
+    }
+
     if specs.is_empty() {
-        eprintln!("no specs found in {}", spox_dir.display());
+        if active_only {
+            eprintln!("no active specs in {}", spox_dir.display());
+        } else {
+            eprintln!("no specs found in {}", spox_dir.display());
+        }
         maybe_suggest_install();
         return;
     }
@@ -873,7 +884,7 @@ fn cmd_help() {
     println!("usage: spox <command> [options]");
     println!();
     println!("Commands:");
-    println!("  list [-c]              list all specs (use -c to show open criteria)");
+    println!("  list [-c] [-a]         list all specs (-c: open criteria, -a: hide completed/discarded)");
     println!("  view [-c] <spec>       show a spec (raw file, or -c for criteria dashboard)");
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
@@ -905,10 +916,19 @@ fn main() {
             cmd_set_status(b, c);
         }
         [a] if a == "list" => {
-            cmd_list(false, None);
+            cmd_list(false, None, false);
         }
         [a, b] if a == "list" && (b == "-c" || b == "--criteria") => {
-            cmd_list(true, None);
+            cmd_list(true, None, false);
+        }
+        [a, b] if a == "list" && (b == "-a" || b == "--active") => {
+            cmd_list(false, None, true);
+        }
+        [a, b, c] if a == "list" && (b == "-a" || b == "--active") && (c == "-c" || c == "--criteria") => {
+            cmd_list(true, None, true);
+        }
+        [a, b, c] if a == "list" && (b == "-c" || b == "--criteria") && (c == "-a" || c == "--active") => {
+            cmd_list(true, None, true);
         }
         [a, b] if a == "view" => {
             cmd_view_raw(b);
