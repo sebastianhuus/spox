@@ -798,6 +798,32 @@ fn git_head(repo: &PathBuf) -> Option<Vec<u8>> {
         .map(|o| o.stdout)
 }
 
+fn git_pull(repo: &PathBuf) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(["pull", "--quiet"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+fn cargo_build_release(repo: &PathBuf) -> Result<(), String> {
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--release", "--quiet"])
+        .current_dir(repo)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("cargo build exited with {}", status))
+    }
+}
+
 fn maybe_self_update() {
     if !should_check_updates() {
         return;
@@ -811,25 +837,53 @@ fn maybe_self_update() {
 
     let before = git_head(&repo);
 
-    let ok = std::process::Command::new("git")
-        .args(["pull", "--quiet"])
-        .current_dir(&repo)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !ok {
+    if git_pull(&repo).is_err() {
         return;
     }
 
     if before.is_some() && git_head(&repo) != before {
         eprintln!("spox: new version pulled, rebuilding...");
-        let _ = std::process::Command::new("cargo")
-            .args(["build", "--release", "--quiet"])
-            .current_dir(&repo)
-            .status();
+        let _ = cargo_build_release(&repo);
         eprintln!("spox: updated");
     }
+}
+
+fn cmd_update() {
+    let repo = match spox_repo_dir() {
+        Some(d) if d.join(".git").exists() => d,
+        _ => {
+            eprintln!("error: spox is not running from a git checkout");
+            std::process::exit(1);
+        }
+    };
+
+    let before = git_head(&repo);
+
+    if let Err(e) = git_pull(&repo) {
+        eprintln!("error: git pull failed: {}", e);
+        std::process::exit(1);
+    }
+
+    mark_checked();
+
+    let after = git_head(&repo);
+    if before.is_some() && after == before {
+        eprintln!("spox: already up to date");
+        return;
+    }
+
+    let head_short = after
+        .as_ref()
+        .map(|h| String::from_utf8_lossy(h).trim().chars().take(7).collect::<String>())
+        .unwrap_or_default();
+    eprintln!("spox: updated to {}, rebuilding...", head_short);
+
+    if let Err(e) = cargo_build_release(&repo) {
+        eprintln!("error: build failed: {}", e);
+        std::process::exit(1);
+    }
+
+    eprintln!("spox: rebuilt successfully");
 }
 
 fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
@@ -926,6 +980,7 @@ fn cmd_help() {
     println!("  status <spec> <value>  set a spec's status field");
     println!("  init                   create .spox/ in the current directory");
     println!("  skill install          install the spox skill into .claude/skills/");
+    println!("  update                 git pull and rebuild spox");
     println!("  version                print the installed version");
     println!("  help                   show this message");
 }
@@ -940,6 +995,9 @@ fn main() {
         }
         [a] if a == "init" => {
             cmd_init();
+        }
+        [a] if a == "update" => {
+            cmd_update();
         }
         [a, b] if a == "skill" && b == "install" => {
             cmd_skill_install();
@@ -983,7 +1041,7 @@ fn main() {
                 .collect();
 
             // Known commands that didn't match their arm = wrong number of arguments.
-            let known_cmds = ["check", "status", "skill", "list", "view", "init", "version", "help"];
+            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "version", "help"];
             let first_pos = positional.first().copied();
             if positional.len() > 1 || first_pos.map(|p| known_cmds.contains(&p)).unwrap_or(false) {
                 eprintln!("error: unexpected arguments");
