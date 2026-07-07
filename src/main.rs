@@ -102,11 +102,31 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     Some(Spec { name, status, open_criteria })
 }
 
+fn sync_format_md(spox_dir: &std::path::Path) {
+    let path = spox_dir.join(".format.md");
+    let root = spox_dir.parent().unwrap_or(spox_dir);
+    let rel = path.strip_prefix(root).unwrap_or(&path);
+    let status = match fs::read_to_string(&path) {
+        Ok(s) if s == FORMAT_MD => None,
+        Ok(_) => Some("updated"),
+        Err(_) => Some("created"),
+    };
+    if let Some(status) = status {
+        fs::write(&path, FORMAT_MD).unwrap_or_else(|e| {
+            eprintln!("error: could not write {}: {}", path.display(), e);
+            std::process::exit(1);
+        });
+        eprintln!("spox: {} {}", status, rel.display());
+    }
+}
+
 fn require_spox_dir() -> PathBuf {
-    find_spox_dir().unwrap_or_else(|| {
+    let dir = find_spox_dir().unwrap_or_else(|| {
         eprintln!("error: no .spox directory found in this or any parent directory");
         std::process::exit(1);
-    })
+    });
+    sync_format_md(&dir);
+    dir
 }
 
 fn find_spec_path(spox_dir: &std::path::Path, spec_name: &str) -> PathBuf {
