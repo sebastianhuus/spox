@@ -8,6 +8,14 @@ Each spec is a single Markdown file in this folder. The first line is always:
 status: <value>
 ```
 
+followed immediately by a second line giving the spec's creation date:
+
+```
+date: <YYYY-MM-DD>
+```
+
+`date` is set once, when the spec is created, and never edited afterward — it's used to sort specs within a status group, newest first. Specs written before this field existed have no `date` line; they sort as oldest within their group.
+
 Valid statuses:
 
 | Status | Meaning |
@@ -25,10 +33,11 @@ Avoid: `implement-map.md`, `fix-camera.md`
 
 ## Structure
 
-After the status line, each spec follows this shape:
+After the status and date lines, each spec follows this shape:
 
 ```markdown
 status: ongoing
+date: 2026-03-14
 
 # Title
 

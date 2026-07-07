@@ -89,10 +89,11 @@ Common values: `draft`, `ongoing`, `completed`, `discarded`.
 
 ## Spec file format
 
-Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox view -c`.
+Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`, followed by `date: <YYYY-MM-DD>` (the spec's creation date, set once and never edited — used to sort specs newest-first within a status group). Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox view -c`.
 
 ```markdown
 status: in-progress
+date: 2026-03-14
 
 Some notes about this spec.
 
@@ -107,7 +108,7 @@ Some notes about this spec.
 
 **Initialise spox in a new project** — run `spox init`. This creates `.spox/` and writes `.spox/.format.md`, which is the canonical reference for spec format, naming conventions, and valid statuses. Read it before creating specs in an unfamiliar project.
 
-**Create a new spec** — use the template in `spec-template.md` (in this skill directory). Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
+**Create a new spec** — use the template in `spec-template.md` (in this skill directory), filling in the `date:` line with today's date. Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
 
 **Check off all criteria** — run `spox view -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <label>` for partial mid-session completions — the label comes from `spox view -c` output and is stable across checks.
 

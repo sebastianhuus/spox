@@ -14,6 +14,7 @@ const FORMAT_MD: &str = include_str!("../format.md");
 struct Spec {
     name: String,
     status: String,
+    date: String,
     open_criteria: Vec<String>,
 }
 
@@ -90,16 +91,29 @@ fn maybe_suggest_install() {
 fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     let name = path.file_stem()?.to_string_lossy().into_owned();
     let content = fs::read_to_string(path).ok()?;
-    let first_line = content.lines().next().unwrap_or("");
-    let status = first_line
-        .strip_prefix("status: ")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "(no status)".to_string());
+
+    let mut status = "(no status)".to_string();
+    let mut date = String::new();
+    let mut status_seen = false;
+    for line in content.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            break;
+        }
+        if let Some(v) = line.strip_prefix("status: ") {
+            status = v.trim().to_string();
+            status_seen = true;
+        } else if let Some(v) = line.strip_prefix("date: ") {
+            date = v.trim().to_string();
+        } else if !status_seen {
+            break;
+        }
+    }
+
     let open_criteria = content
         .lines()
         .filter_map(|line| line.strip_prefix("- [ ] ").map(str::to_string))
         .collect();
-    Some(Spec { name, status, open_criteria })
+    Some(Spec { name, status, date, open_criteria })
 }
 
 fn sync_format_md(spox_dir: &std::path::Path) {
@@ -861,6 +875,7 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
     specs.sort_by(|a, b| {
         status_group(&a.status)
             .cmp(&status_group(&b.status))
+            .then(b.date.cmp(&a.date))
             .then(a.name.cmp(&b.name))
     });
 

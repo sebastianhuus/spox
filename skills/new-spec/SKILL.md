@@ -30,6 +30,7 @@ Use this template:
 
 ```
 status: draft
+date: [YYYY-MM-DD, today's date]
 
 # [Feature name]
 
@@ -44,4 +45,4 @@ status: draft
 [Design decisions, open questions, or implementation detail. Omit section if empty.]
 ```
 
-Fill in the template from the user's description and the Explore findings. Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.
+Fill in the `date:` line with today's date. Fill in the rest of the template from the user's description and the Explore findings. Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.
