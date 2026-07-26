@@ -15,6 +15,7 @@ struct Spec {
     name: String,
     status: String,
     date: String,
+    tagline: Option<String>,
     open_criteria: Vec<String>,
 }
 
@@ -94,6 +95,7 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
 
     let mut status = "(no status)".to_string();
     let mut date = String::new();
+    let mut tagline = None;
     let mut status_seen = false;
     for line in content.lines() {
         if line.is_empty() || line.starts_with('#') {
@@ -104,6 +106,8 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
             status_seen = true;
         } else if let Some(v) = line.strip_prefix("date: ") {
             date = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("tagline: ") {
+            tagline = Some(v.trim().to_string());
         } else if !status_seen {
             break;
         }
@@ -113,7 +117,7 @@ fn parse_spec(path: &std::path::Path) -> Option<Spec> {
         .lines()
         .filter_map(|line| line.strip_prefix("- [ ] ").map(str::to_string))
         .collect();
-    Some(Spec { name, status, date, open_criteria })
+    Some(Spec { name, status, date, tagline, open_criteria })
 }
 
 fn sync_format_md(spox_dir: &std::path::Path) {
@@ -886,7 +890,23 @@ fn cmd_update() {
     eprintln!("spox: rebuilt successfully");
 }
 
-fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
+fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_width {
+        return s.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    let mut truncated: String = chars[..max_width - 1].iter().collect();
+    truncated.push('…');
+    truncated
+}
+
+fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_tagline: bool) {
     let spox_dir = require_spox_dir();
 
     let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
@@ -934,8 +954,24 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
     });
 
     let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
+    let status_width = specs.iter().map(|s| s.status.len()).max().unwrap_or(0);
+    let term_width = terminal_width();
     for spec in &specs {
-        println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+        if show_tagline {
+            let prefix = format!(
+                "{:<name_width$}  {:<status_width$}  ",
+                spec.name,
+                spec.status,
+                name_width = name_width,
+                status_width = status_width
+            );
+            let tagline = spec.tagline.as_deref().unwrap_or("");
+            let available = term_width.saturating_sub(prefix.chars().count());
+            let truncated = truncate_with_ellipsis(tagline, available);
+            println!("{}", format!("{}{}", prefix, truncated).trim_end());
+        } else {
+            println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+        }
         if show_criteria {
             print_criteria(&spec.open_criteria);
         }
@@ -973,7 +1009,7 @@ fn cmd_help() {
     println!("usage: spox <command> [options]");
     println!();
     println!("Commands:");
-    println!("  list [-c] [-a]         list all specs (-c: open criteria, -a: hide completed/discarded)");
+    println!("  list [-c] [-a] [-t]    list all specs (-c: open criteria, -a: hide completed/discarded, -t: show tagline)");
     println!("  view [-c] <spec>       show a spec (raw file, or -c for criteria dashboard)");
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
@@ -1008,20 +1044,23 @@ fn main() {
         [a, b, c] if a == "status" => {
             cmd_set_status(b, c);
         }
-        [a] if a == "list" => {
-            cmd_list(false, None, false);
-        }
-        [a, b] if a == "list" && (b == "-c" || b == "--criteria") => {
-            cmd_list(true, None, false);
-        }
-        [a, b] if a == "list" && (b == "-a" || b == "--active") => {
-            cmd_list(false, None, true);
-        }
-        [a, b, c] if a == "list" && (b == "-a" || b == "--active") && (c == "-c" || c == "--criteria") => {
-            cmd_list(true, None, true);
-        }
-        [a, b, c] if a == "list" && (b == "-c" || b == "--criteria") && (c == "-a" || c == "--active") => {
-            cmd_list(true, None, true);
+        [a, flags @ ..] if a == "list" => {
+            let mut show_criteria = false;
+            let mut active_only = false;
+            let mut show_tagline = false;
+            for flag in flags {
+                match flag.as_str() {
+                    "-c" | "--criteria" => show_criteria = true,
+                    "-a" | "--active" => active_only = true,
+                    "-t" | "--tagline" => show_tagline = true,
+                    _ => {
+                        eprintln!("error: unexpected arguments");
+                        eprintln!("run `spox help` for usage");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            cmd_list(show_criteria, None, active_only, show_tagline);
         }
         [a, b] if a == "view" => {
             cmd_view_raw(b);

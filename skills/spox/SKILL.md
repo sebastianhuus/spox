@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
+allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -21,6 +21,8 @@ hooks:
 spox list                      # list all specs with their status
 spox list -c                   # also show labelled open criteria under each spec
 spox list --criteria           # same as -c
+spox list -t                   # show each spec's one-line tagline (if set)
+spox list --tagline            # same as -t
 spox view <spec>               # show the full raw spec file
 spox view -c <spec>            # show a single spec's open criteria in dashboard format
 spox init                      # create .spox/ in the current directory (new projects)

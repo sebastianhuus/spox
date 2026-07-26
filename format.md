@@ -16,6 +16,14 @@ date: <YYYY-MM-DD>
 
 `date` is set once, when the spec is created, and never edited afterward — it's used to sort specs within a status group, newest first. Specs written before this field existed have no `date` line; they sort as oldest within their group.
 
+Optionally, a third frontmatter line gives a one-line, glanceable description of the spec:
+
+```
+tagline: <short one-line description>
+```
+
+`tagline` is shown by `spox list -t`. It's optional — specs without one still list normally under `-t`, just with no tagline text.
+
 Valid statuses:
 
 | Status | Meaning |
