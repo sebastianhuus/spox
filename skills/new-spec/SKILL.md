@@ -1,5 +1,7 @@
 ---
+name: new-spec
 description: Create a new spox spec. Use when the user wants to add a spec, track a new feature, or start new work in a .spox/ project.
+allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Read, Write, Glob, Grep, Agent
 ---
 
 ## Current specs
