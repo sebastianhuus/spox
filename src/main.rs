@@ -11,6 +11,8 @@ const CHECK_CHAIN_SH: &str = include_str!("../skills/spox/check-chain.sh");
 const NEW_SPEC_SKILL_MD: &str = include_str!("../skills/new-spec/SKILL.md");
 const FORMAT_MD: &str = include_str!("../format.md");
 
+const VALID_STATUSES: [&str; 5] = ["draft", "ongoing", "pending-verification", "completed", "discarded"];
+
 struct Spec {
     name: String,
     status: String,
@@ -460,7 +462,17 @@ fn cmd_check(spec_name: &str, n_str: &str) {
     }
 }
 
+fn print_valid_statuses() {
+    eprintln!("valid statuses: {}", VALID_STATUSES.join(", "));
+}
+
 fn cmd_set_status(spec_name: &str, value: &str) {
+    if !VALID_STATUSES.contains(&value) {
+        eprintln!("error: invalid status '{}'", value);
+        print_valid_statuses();
+        std::process::exit(1);
+    }
+
     let spox_dir = require_spox_dir();
     let spec_path = find_spec_path(&spox_dir, spec_name);
     let content = read_spec_content(&spec_path);
@@ -1013,7 +1025,7 @@ fn cmd_help() {
     println!("  view [-c] <spec>       show a spec (raw file, or -c for criteria dashboard)");
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
-    println!("  status <spec> <value>  set a spec's status field");
+    println!("  status <spec> <value>  set a spec's status field ({})", VALID_STATUSES.join(", "));
     println!("  init                   create .spox/ in the current directory");
     println!("  skill install          install the spox skill into .claude/skills/");
     println!("  update                 git pull and rebuild spox");
@@ -1043,6 +1055,11 @@ fn main() {
         }
         [a, b, c] if a == "status" => {
             cmd_set_status(b, c);
+        }
+        [a] if a == "status" => {
+            eprintln!("usage: spox status <spec> <value>");
+            print_valid_statuses();
+            std::process::exit(1);
         }
         [a, flags @ ..] if a == "list" => {
             let mut show_criteria = false;

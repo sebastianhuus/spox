@@ -83,11 +83,11 @@ spox check auth a3f2 && spox check auth b8c1
 `spox status <spec> <value>` rewrites the `status:` line in the spec file.
 
 ```
-$ spox status auth in-progress
-auth: draft → in-progress
+$ spox status auth ongoing
+auth: draft → ongoing
 ```
 
-Common values: `draft`, `ongoing`, `completed`, `discarded`.
+Valid values: `draft`, `ongoing`, `pending-verification`, `completed`, `discarded`. Any other value is rejected with a non-zero exit.
 
 ## Spec file format
 
