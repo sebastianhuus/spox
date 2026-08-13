@@ -104,6 +104,10 @@ Some notes about this spec.
 - [ ] Add tests
 ```
 
+## Specs are repo-scoped, not global
+
+A spec name only resolves within the `.spox/` directory of the repo it was created in — `spox view`/`spox list` walk up from CWD to find *that repo's* `.spox/` and nowhere else. If you're handed a spec name or its contents that references a **different** repository (e.g. relayed from another agent's exploration, or from the user pasting in cross-repo context), do **not** try to `spox view` or search for it in your own workspace — it won't be there, and that's expected, not an error. Treat the content you were given as authoritative data and use it directly instead of re-deriving it. Only fall back to a local lookup if it's genuinely ambiguous which repo the reference belongs to.
+
 ## Common tasks
 
 **Check current spec status** — run `spox list` or `spox list -c` for the full dashboard, or `spox view -c <spec>` to focus on one spec.
