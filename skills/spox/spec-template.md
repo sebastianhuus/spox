@@ -1,4 +1,5 @@
 status: draft
+date: [YYYY-MM-DD, today's date]
 
 # [Feature name]
 

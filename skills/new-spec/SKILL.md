@@ -1,5 +1,7 @@
 ---
+name: new-spec
 description: Create a new spox spec. Use when the user wants to add a spec, track a new feature, or start new work in a .spox/ project.
+allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Read, Write, Glob, Grep, Agent
 ---
 
 ## Current specs
@@ -30,6 +32,7 @@ Use this template:
 
 ```
 status: draft
+date: [YYYY-MM-DD, today's date]
 
 # [Feature name]
 
@@ -44,4 +47,8 @@ status: draft
 [Design decisions, open questions, or implementation detail. Omit section if empty.]
 ```
 
-Fill in the template from the user's description and the Explore findings. Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.
+Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description and the Explore findings (conventions, relevant files, related specs).
+
+**Acceptance criteria must come from the user, not from exploration.** Never invent criteria based on what you found in the codebase — Explore findings can inform *how* a criterion is phrased, but not *what* the criteria are. If the user's message already gives concrete, verifiable criteria (a list of musts, a bug description, a specific behavior), use those directly — do not ask for anything they've already covered. If it's too vague to produce verifiable criteria (e.g. just a feature name or a one-line wish), ask one direct question: "What does done look like for this?" or "What's the happy-path scenario?" — then draft from the answer. Don't run a multi-phase requirements interview; one clarifying round is enough.
+
+Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.

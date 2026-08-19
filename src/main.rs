@@ -11,9 +11,13 @@ const CHECK_CHAIN_SH: &str = include_str!("../skills/spox/check-chain.sh");
 const NEW_SPEC_SKILL_MD: &str = include_str!("../skills/new-spec/SKILL.md");
 const FORMAT_MD: &str = include_str!("../format.md");
 
+const VALID_STATUSES: [&str; 5] = ["draft", "ongoing", "pending-verification", "completed", "discarded"];
+
 struct Spec {
     name: String,
     status: String,
+    date: String,
+    tagline: Option<String>,
     open_criteria: Vec<String>,
 }
 
@@ -90,23 +94,59 @@ fn maybe_suggest_install() {
 fn parse_spec(path: &std::path::Path) -> Option<Spec> {
     let name = path.file_stem()?.to_string_lossy().into_owned();
     let content = fs::read_to_string(path).ok()?;
-    let first_line = content.lines().next().unwrap_or("");
-    let status = first_line
-        .strip_prefix("status: ")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "(no status)".to_string());
+
+    let mut status = "(no status)".to_string();
+    let mut date = String::new();
+    let mut tagline = None;
+    let mut status_seen = false;
+    for line in content.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            break;
+        }
+        if let Some(v) = line.strip_prefix("status: ") {
+            status = v.trim().to_string();
+            status_seen = true;
+        } else if let Some(v) = line.strip_prefix("date: ") {
+            date = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("tagline: ") {
+            tagline = Some(v.trim().to_string());
+        } else if !status_seen {
+            break;
+        }
+    }
+
     let open_criteria = content
         .lines()
         .filter_map(|line| line.strip_prefix("- [ ] ").map(str::to_string))
         .collect();
-    Some(Spec { name, status, open_criteria })
+    Some(Spec { name, status, date, tagline, open_criteria })
+}
+
+fn sync_format_md(spox_dir: &std::path::Path) {
+    let path = spox_dir.join(".format.md");
+    let root = spox_dir.parent().unwrap_or(spox_dir);
+    let rel = path.strip_prefix(root).unwrap_or(&path);
+    let status = match fs::read_to_string(&path) {
+        Ok(s) if s == FORMAT_MD => None,
+        Ok(_) => Some("updated"),
+        Err(_) => Some("created"),
+    };
+    if let Some(status) = status {
+        fs::write(&path, FORMAT_MD).unwrap_or_else(|e| {
+            eprintln!("error: could not write {}: {}", path.display(), e);
+            std::process::exit(1);
+        });
+        eprintln!("spox: {} {}", status, rel.display());
+    }
 }
 
 fn require_spox_dir() -> PathBuf {
-    find_spox_dir().unwrap_or_else(|| {
+    let dir = find_spox_dir().unwrap_or_else(|| {
         eprintln!("error: no .spox directory found in this or any parent directory");
         std::process::exit(1);
-    })
+    });
+    sync_format_md(&dir);
+    dir
 }
 
 fn find_spec_path(spox_dir: &std::path::Path, spec_name: &str) -> PathBuf {
@@ -422,7 +462,17 @@ fn cmd_check(spec_name: &str, n_str: &str) {
     }
 }
 
+fn print_valid_statuses() {
+    eprintln!("valid statuses: {}", VALID_STATUSES.join(", "));
+}
+
 fn cmd_set_status(spec_name: &str, value: &str) {
+    if !VALID_STATUSES.contains(&value) {
+        eprintln!("error: invalid status '{}'", value);
+        print_valid_statuses();
+        std::process::exit(1);
+    }
+
     let spox_dir = require_spox_dir();
     let spec_path = find_spec_path(&spox_dir, spec_name);
     let content = read_spec_content(&spec_path);
@@ -667,43 +717,15 @@ fn cmd_init() {
 
     let project_dir = spox_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| spox_dir.clone());
 
-    // Add .spox/.cache/ to .gitignore if we're inside a git repo.
-    let git_root = {
-        let mut dir = project_dir.clone();
-        loop {
-            if dir.join(".git").exists() {
-                break Some(dir);
-            }
-            if !dir.pop() {
-                break None;
-            }
-        }
-    };
-    if let Some(root) = git_root {
-        let gitignore = root.join(".gitignore");
-        let entry = ".spox/.cache/";
-        let existing = fs::read_to_string(&gitignore).unwrap_or_default();
-        let already_present = existing.lines().any(|l| l.trim() == entry);
-        if !already_present {
-            use std::io::Write;
-            let mut file = fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&gitignore)
-                .unwrap_or_else(|e| {
-                    eprintln!("error: could not open {}: {}", gitignore.display(), e);
-                    std::process::exit(1);
-                });
-            if !existing.is_empty() && !existing.ends_with('\n') {
-                writeln!(file).unwrap_or(());
-            }
-            writeln!(file, "{}", entry).unwrap_or_else(|e| {
-                eprintln!("error: could not write {}: {}", gitignore.display(), e);
-                std::process::exit(1);
-            });
-            println!("updated: {}", gitignore.display());
-        }
-    }
+    // Ignore .spox/.cache/ via a self-contained .gitignore inside .spox/,
+    // rather than editing the project's own .gitignore. This works no
+    // matter where .spox/ lives and needs no git-root detection.
+    let spox_gitignore = spox_dir.join(".gitignore");
+    fs::write(&spox_gitignore, ".cache/\n").unwrap_or_else(|e| {
+        eprintln!("error: could not write {}: {}", spox_gitignore.display(), e);
+        std::process::exit(1);
+    });
+    println!("created: {}", spox_gitignore.display());
 
     allow_check_cmd(&project_dir);
 }
@@ -764,6 +786,32 @@ fn git_head(repo: &PathBuf) -> Option<Vec<u8>> {
         .map(|o| o.stdout)
 }
 
+fn git_pull(repo: &PathBuf) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(["pull", "--quiet"])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+fn cargo_build_release(repo: &PathBuf) -> Result<(), String> {
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--release", "--quiet"])
+        .current_dir(repo)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("cargo build exited with {}", status))
+    }
+}
+
 fn maybe_self_update() {
     if !should_check_updates() {
         return;
@@ -777,28 +825,72 @@ fn maybe_self_update() {
 
     let before = git_head(&repo);
 
-    let ok = std::process::Command::new("git")
-        .args(["pull", "--quiet"])
-        .current_dir(&repo)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !ok {
+    if git_pull(&repo).is_err() {
         return;
     }
 
     if before.is_some() && git_head(&repo) != before {
         eprintln!("spox: new version pulled, rebuilding...");
-        let _ = std::process::Command::new("cargo")
-            .args(["build", "--release", "--quiet"])
-            .current_dir(&repo)
-            .status();
+        let _ = cargo_build_release(&repo);
         eprintln!("spox: updated");
     }
 }
 
-fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
+fn cmd_update() {
+    let repo = match spox_repo_dir() {
+        Some(d) if d.join(".git").exists() => d,
+        _ => {
+            eprintln!("error: spox is not running from a git checkout");
+            std::process::exit(1);
+        }
+    };
+
+    let before = git_head(&repo);
+
+    if let Err(e) = git_pull(&repo) {
+        eprintln!("error: git pull failed: {}", e);
+        std::process::exit(1);
+    }
+
+    mark_checked();
+
+    let after = git_head(&repo);
+    if before.is_some() && after == before {
+        eprintln!("spox: already up to date");
+        return;
+    }
+
+    let head_short = after
+        .as_ref()
+        .map(|h| String::from_utf8_lossy(h).trim().chars().take(7).collect::<String>())
+        .unwrap_or_default();
+    eprintln!("spox: updated to {}, rebuilding...", head_short);
+
+    if let Err(e) = cargo_build_release(&repo) {
+        eprintln!("error: build failed: {}", e);
+        std::process::exit(1);
+    }
+
+    eprintln!("spox: rebuilt successfully");
+}
+
+fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_width {
+        return s.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    let mut truncated: String = chars[..max_width - 1].iter().collect();
+    truncated.push('…');
+    truncated
+}
+
+fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_tagline: bool) {
     let spox_dir = require_spox_dir();
 
     let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
@@ -841,12 +933,29 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool) {
     specs.sort_by(|a, b| {
         status_group(&a.status)
             .cmp(&status_group(&b.status))
+            .then(b.date.cmp(&a.date))
             .then(a.name.cmp(&b.name))
     });
 
     let name_width = specs.iter().map(|s| s.name.len()).max().unwrap_or(0);
+    let status_width = specs.iter().map(|s| s.status.len()).max().unwrap_or(0);
+    let term_width = terminal_width();
     for spec in &specs {
-        println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+        if show_tagline {
+            let prefix = format!(
+                "{:<name_width$}  {:<status_width$}  ",
+                spec.name,
+                spec.status,
+                name_width = name_width,
+                status_width = status_width
+            );
+            let tagline = spec.tagline.as_deref().unwrap_or("");
+            let available = term_width.saturating_sub(prefix.chars().count());
+            let truncated = truncate_with_ellipsis(tagline, available);
+            println!("{}", format!("{}{}", prefix, truncated).trim_end());
+        } else {
+            println!("{:<width$}  {}", spec.name, spec.status, width = name_width);
+        }
         if show_criteria {
             print_criteria(&spec.open_criteria);
         }
@@ -884,13 +993,14 @@ fn cmd_help() {
     println!("usage: spox <command> [options]");
     println!();
     println!("Commands:");
-    println!("  list [-c] [-a]         list all specs (-c: open criteria, -a: hide completed/discarded)");
+    println!("  list [-c] [-a] [-t]    list all specs (-c: open criteria, -a: hide completed/discarded, -t: show tagline)");
     println!("  view [-c] <spec>       show a spec (raw file, or -c for criteria dashboard)");
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
-    println!("  status <spec> <value>  set a spec's status field");
+    println!("  status <spec> <value>  set a spec's status field ({})", VALID_STATUSES.join(", "));
     println!("  init                   create .spox/ in the current directory");
     println!("  skill install          install the spox skill into .claude/skills/");
+    println!("  update                 git pull and rebuild spox");
     println!("  version                print the installed version");
     println!("  help                   show this message");
 }
@@ -906,6 +1016,9 @@ fn main() {
         [a] if a == "init" => {
             cmd_init();
         }
+        [a] if a == "update" => {
+            cmd_update();
+        }
         [a, b] if a == "skill" && b == "install" => {
             cmd_skill_install();
         }
@@ -915,20 +1028,28 @@ fn main() {
         [a, b, c] if a == "status" => {
             cmd_set_status(b, c);
         }
-        [a] if a == "list" => {
-            cmd_list(false, None, false);
+        [a] if a == "status" => {
+            eprintln!("usage: spox status <spec> <value>");
+            print_valid_statuses();
+            std::process::exit(1);
         }
-        [a, b] if a == "list" && (b == "-c" || b == "--criteria") => {
-            cmd_list(true, None, false);
-        }
-        [a, b] if a == "list" && (b == "-a" || b == "--active") => {
-            cmd_list(false, None, true);
-        }
-        [a, b, c] if a == "list" && (b == "-a" || b == "--active") && (c == "-c" || c == "--criteria") => {
-            cmd_list(true, None, true);
-        }
-        [a, b, c] if a == "list" && (b == "-c" || b == "--criteria") && (c == "-a" || c == "--active") => {
-            cmd_list(true, None, true);
+        [a, flags @ ..] if a == "list" => {
+            let mut show_criteria = false;
+            let mut active_only = false;
+            let mut show_tagline = false;
+            for flag in flags {
+                match flag.as_str() {
+                    "-c" | "--criteria" => show_criteria = true,
+                    "-a" | "--active" => active_only = true,
+                    "-t" | "--tagline" => show_tagline = true,
+                    _ => {
+                        eprintln!("error: unexpected arguments");
+                        eprintln!("run `spox help` for usage");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            cmd_list(show_criteria, None, active_only, show_tagline);
         }
         [a, b] if a == "view" => {
             cmd_view_raw(b);
@@ -948,7 +1069,7 @@ fn main() {
                 .collect();
 
             // Known commands that didn't match their arm = wrong number of arguments.
-            let known_cmds = ["check", "status", "skill", "list", "view", "init", "version", "help"];
+            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "version", "help"];
             let first_pos = positional.first().copied();
             if positional.len() > 1 || first_pos.map(|p| known_cmds.contains(&p)).unwrap_or(false) {
                 eprintln!("error: unexpected arguments");

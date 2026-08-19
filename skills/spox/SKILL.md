@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
+allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -21,6 +21,8 @@ hooks:
 spox list                      # list all specs with their status
 spox list -c                   # also show labelled open criteria under each spec
 spox list --criteria           # same as -c
+spox list -t                   # show each spec's one-line tagline (if set)
+spox list --tagline            # same as -t
 spox view <spec>               # show the full raw spec file
 spox view -c <spec>            # show a single spec's open criteria in dashboard format
 spox init                      # create .spox/ in the current directory (new projects)
@@ -81,18 +83,19 @@ spox check auth a3f2 && spox check auth b8c1
 `spox status <spec> <value>` rewrites the `status:` line in the spec file.
 
 ```
-$ spox status auth in-progress
-auth: draft → in-progress
+$ spox status auth ongoing
+auth: draft → ongoing
 ```
 
-Common values: `draft`, `ongoing`, `completed`, `discarded`.
+Valid values: `draft`, `ongoing`, `pending-verification`, `completed`, `discarded`. Any other value is rejected with a non-zero exit.
 
 ## Spec file format
 
-Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`. Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox view -c`.
+Specs are `.md` files inside `.spox/`. The first line must be `status: <value>`, followed by `date: <YYYY-MM-DD>` (the spec's creation date, set once and never edited — used to sort specs newest-first within a status group). Unchecked items (`- [ ] ...`) are open criteria; checked ones (`- [x] ...`) are complete and not shown by `spox view -c`.
 
 ```markdown
 status: in-progress
+date: 2026-03-14
 
 Some notes about this spec.
 
@@ -101,13 +104,17 @@ Some notes about this spec.
 - [ ] Add tests
 ```
 
+## Specs are repo-scoped, not global
+
+A spec name only resolves within the `.spox/` directory of the repo it was created in — `spox view`/`spox list` walk up from CWD to find *that repo's* `.spox/` and nowhere else. If you're handed a spec name or its contents that references a **different** repository (e.g. relayed from another agent's exploration, or from the user pasting in cross-repo context), do **not** try to `spox view` or search for it in your own workspace — it won't be there, and that's expected, not an error. Treat the content you were given as authoritative data and use it directly instead of re-deriving it. Only fall back to a local lookup if it's genuinely ambiguous which repo the reference belongs to.
+
 ## Common tasks
 
 **Check current spec status** — run `spox list` or `spox list -c` for the full dashboard, or `spox view -c <spec>` to focus on one spec.
 
 **Initialise spox in a new project** — run `spox init`. This creates `.spox/` and writes `.spox/.format.md`, which is the canonical reference for spec format, naming conventions, and valid statuses. Read it before creating specs in an unfamiliar project.
 
-**Create a new spec** — use the template in `spec-template.md` (in this skill directory). Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
+**Create a new spec** — use the template in `spec-template.md` (in this skill directory), filling in the `date:` line with today's date. Write the filled-in file to `.spox/<name>.md`. Names should be short kebab-case feature identifiers, not task descriptions (`map-grid.md`, not `implement-map.md`).
 
 **Check off all criteria** — run `spox view -c <spec>` to read the spec (required by the mtime guard), then `spox check <spec> all`. Use `spox check <spec> <label>` for partial mid-session completions — the label comes from `spox view -c` output and is stable across checks.
 
