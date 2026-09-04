@@ -1,7 +1,7 @@
 ---
 name: new-spec
 description: Create a new spox spec. Use when the user wants to add a spec, track a new feature, or start new work in a .spox/ project.
-allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Read, Write, Glob, Grep, Agent, AskUserQuestion
+allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Bash(mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'"), Bash(open -a MarkReview *), Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
 ## Current specs
@@ -66,3 +66,7 @@ date: [YYYY-MM-DD, today's date]
 Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description, the confirmed technical approach, and Explore findings (conventions, relevant files, related specs).
 
 Write the result to `.spox/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
+
+## MarkReview
+
+!`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it — e.g. Want me to open this in MarkReview? This is an offer, not an automatic action: only run open -a MarkReview .spox/<name>.md (the path you just wrote) if the user says yes." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`

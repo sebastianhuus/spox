@@ -1,0 +1,41 @@
+{
+  "agentInstructions" : "Act only on annotations whose status is open. Ignore annotations whose status is muted.",
+  "annotations" : [
+    {
+      "blockText" : "Now that each checkpoint has a stable hex identifier, agents can safely re-run spox check <label> without risk of ambiguity or runaway chaining. The init script and skill install script should automatically add a spox check * permission allowlist entry so users aren’t prompted on every check invocation.",
+      "comment" : "this is a comment",
+      "contextAfter" : "",
+      "contextBefore" : "",
+      "createdAt" : "2026-09-04T15:46:23.964Z",
+      "id" : "40E5C1C3-5071-4F63-B1DA-22246A1F7DC7",
+      "kind" : "block",
+      "section" : "Intent",
+      "selectedText" : "Now that each checkpoint has a stable hex identifier, agents can safely re-run spox check <label> without risk of ambiguity or runaway chaining. The init script and skill install script should automatically add a spox check * permission allowlist entry so users aren’t prompted on every check invocation.",
+      "sequence" : 1,
+      "status" : "open"
+    },
+    {
+      "blockText" : "spox init adds spox check * to the project’s .claude/settings.json allowlist",
+      "comment" : "i can add it to works or sections",
+      "contextAfter" : " adds spox check * to the project’s .claude/settings.json allowlist\n",
+      "contextBefore" : " ",
+      "createdAt" : "2026-09-04T15:46:30.257Z",
+      "id" : "331BDEAB-C10D-4417-B794-6AC9C269293D",
+      "kind" : "text",
+      "section" : "Acceptance criteria",
+      "selectedText" : "spox init",
+      "sequence" : 2,
+      "sourceLineEnd" : 9,
+      "sourceLineStart" : 9,
+      "status" : "open"
+    }
+  ],
+  "formatVersion" : 1,
+  "id" : "B047CFD9-E3F3-4959-8F5F-43E42E083244",
+  "originalMarkdown" : "status: completed\n\n# Auto-allow spox check\n\n## Intent\nNow that each checkpoint has a stable hex identifier, agents can safely re-run `spox check <label>` without risk of ambiguity or runaway chaining. The init script and skill install script should automatically add a `spox check *` permission allowlist entry so users aren't prompted on every check invocation.\n\n## Acceptance criteria\n- [x] `spox init` adds `spox check *` to the project's `.claude/settings.json` allowlist\n- [x] The skill install script (used by `spox install` or equivalent) also adds the same allowlist entry\n- [x] Existing projects that already have the entry are not duplicated\n- [x] Running `spox check <label>` in an agent context does not trigger a permission prompt after init\n\n## Notes\nThe motivation: before stable hex labels, chaining `spox check` could be confusing because criterion numbers shifted as specs changed. With stable identifiers that concern is gone, making blanket allowlisting safe.\n",
+  "previewFontScale" : 1,
+  "previewScrollPosition" : 0,
+  "selectedAnnotationID" : "331BDEAB-C10D-4417-B794-6AC9C269293D",
+  "sourcePath" : "auto-allow-check.md",
+  "title" : "auto-allow-check"
+}
