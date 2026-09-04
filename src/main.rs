@@ -82,7 +82,7 @@ fn skill_status() -> SkillStatus {
     }
 }
 
-fn maybe_suggest_install() {
+fn maybe_update_skill() {
     match skill_status() {
         SkillStatus::Current | SkillStatus::NotInstalled => {}
         SkillStatus::Outdated => {
@@ -857,21 +857,22 @@ fn cmd_update() {
     let after = git_head(&repo);
     if before.is_some() && after == before {
         eprintln!("spox: already up to date");
-        return;
+    } else {
+        let head_short = after
+            .as_ref()
+            .map(|h| String::from_utf8_lossy(h).trim().chars().take(7).collect::<String>())
+            .unwrap_or_default();
+        eprintln!("spox: updated to {}, rebuilding...", head_short);
+
+        if let Err(e) = cargo_build_release(&repo) {
+            eprintln!("error: build failed: {}", e);
+            std::process::exit(1);
+        }
+
+        eprintln!("spox: rebuilt successfully");
     }
 
-    let head_short = after
-        .as_ref()
-        .map(|h| String::from_utf8_lossy(h).trim().chars().take(7).collect::<String>())
-        .unwrap_or_default();
-    eprintln!("spox: updated to {}, rebuilding...", head_short);
-
-    if let Err(e) = cargo_build_release(&repo) {
-        eprintln!("error: build failed: {}", e);
-        std::process::exit(1);
-    }
-
-    eprintln!("spox: rebuilt successfully");
+    maybe_update_skill();
 }
 
 fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
@@ -926,7 +927,7 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_t
         } else {
             eprintln!("no specs found in {}", spox_dir.display());
         }
-        maybe_suggest_install();
+        maybe_update_skill();
         return;
     }
 
@@ -963,7 +964,7 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_t
         store_mtime_cache(&spox_dir, &spec.name, &spec_path);
     }
 
-    maybe_suggest_install();
+    maybe_update_skill();
 }
 
 fn cmd_view_raw(spec_name: &str) {
@@ -986,7 +987,7 @@ fn cmd_view_criteria(spec_name: &str) {
     println!("{:<width$}  {}", spec.name, spec.status, width = spec.name.len());
     print_criteria(&spec.open_criteria);
     store_mtime_cache(&spox_dir, spec_name, &spec_path);
-    maybe_suggest_install();
+    maybe_update_skill();
 }
 
 fn cmd_help() {
