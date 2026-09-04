@@ -8,6 +8,8 @@ SDD is a lightweight discipline: **write the spec before you write the code**. T
 
 2. **Start work** — set status to `ongoing` (`spox status <spec> ongoing`). This signals active implementation.
 
+   Before making code changes — especially anything user-facing (UI, layout, interaction) — prefer entering Claude Code's Plan Mode rather than editing directly. A spox spec covers the *what/why* and a verifiable done-condition; it deliberately doesn't try to pin down visual or interaction detail, because that's not something exploration alone can get right. Plan mode is the complementary step: it explores the actual code being changed (not a summary), asks clarifying questions grounded in what it just read, and requires explicit approval before touching any file. That combination — real code context plus a hard approval gate — is what makes it worth reaching for before UI work in particular, where "what it should look and feel like" is exactly the kind of preference a spec's acceptance criteria won't capture.
+
 3. **Check off criteria as they're met** — `spox check <spec> <label>` using the label shown by `spox -c`. When the last criterion is checked, status automatically becomes `completed`.
 
 4. **Discard if the approach is abandoned** — `spox status <spec> discarded`. Keep the file; it's useful context.

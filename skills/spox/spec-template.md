@@ -10,5 +10,8 @@ date: [YYYY-MM-DD, today's date]
 - [ ] [Something verifiable — visible in the running app, covered by a test, or confirmed by output]
 - [ ] [Another criterion]
 
+## Non-goals
+[What's explicitly out of scope. Optional — omit if empty.]
+
 ## Notes
 [Design decisions, open questions, or implementation detail worth preserving. Optional.]

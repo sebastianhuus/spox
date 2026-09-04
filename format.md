@@ -57,6 +57,9 @@ What this is for and why it exists. One paragraph max.
 - [ ] Something verifiable — can be checked by running the game or a test
 - [ ] Another criterion
 
+## Non-goals
+What's explicitly out of scope for this spec. Optional — omit if there's nothing worth excluding.
+
 ## Notes
 Design decisions, open questions, or implementation detail worth preserving.
 ```
@@ -64,3 +67,6 @@ Design decisions, open questions, or implementation detail worth preserving.
 Acceptance criteria should be things you can actually check — visible in the running game,
 covered by a test, or confirmed by reading the output. Vague criteria ("feels good", "works well")
 belong in Notes, not criteria.
+
+Non-goals are optional but useful whenever a feature request could plausibly be read as bigger
+than intended — they record what was deliberately excluded, not just what wasn't mentioned.

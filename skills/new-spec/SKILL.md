@@ -1,7 +1,7 @@
 ---
 name: new-spec
 description: Create a new spox spec. Use when the user wants to add a spec, track a new feature, or start new work in a .spox/ project.
-allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Read, Write, Glob, Grep, Agent
+allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
 ## Current specs
@@ -24,11 +24,24 @@ Before drafting, use the Agent tool with `subagent_type=Explore` to scan for rel
 
 > Search this repo for context relevant to a new spec called "<feature-name>". Find: (1) any existing .spox/ specs with similar names or overlapping topics, (2) source files or modules the feature is likely to touch — grep for the feature name and related terms, (3) naming or structural conventions visible in adjacent code. Return a concise summary: related specs, relevant file paths, conventions to follow. If nothing relevant is found, say so briefly.
 
-Use the findings to ground the spec. Do not ask the user for anything the Explore agent already resolved. If nothing relevant is found, proceed directly to drafting.
+### Step 2: Confirm direction with the user — before drafting
 
-### Step 2: Write the spec
+This is the main control point, and it happens *before* any spec content is written. Don't draft first and ask for review after — by the time a full Intent/Acceptance/Notes draft exists it's too heavy to negotiate line by line, and wrong assumptions are already baked in.
 
-Use this template:
+Turn the Explore findings and the user's request into a short, concrete check-in. The goal is to catch codebase-specific misses while fixing them is a one-line answer, not a rewrite. Cover only what isn't already resolved:
+
+- **Technical approach.** If Explore surfaced a specific integration point, existing pattern, or a small set of candidate modules, name them and ask which is right — e.g. "Explore found `X` already handles `Y` in `path/to/file` — is that where this should hook in, or somewhere else?" This is the question most likely to surface something the agent would otherwise get wrong. If Explore found one clear, unambiguous answer, state it and move on instead of asking.
+- **Done condition / acceptance criteria**, if the user's message didn't already give concrete, verifiable ones.
+- **Non-goals** — what's explicitly out of scope, so it doesn't get silently assumed either way.
+- **Constraints**, if any (must use/avoid a specific approach, library, or pattern).
+
+Use `AskUserQuestion` when Explore turned up a small set of concrete candidates (integration point, module, pattern) — picking from options is cheaper for the user than free text. Use a plain question in your reply for open-ended items (done condition, non-goals). Keep this to one round: ask what's unresolved, get answers, move on — don't loop back for a second pass, and don't ask about anything the user's message or Explore already settled.
+
+**Acceptance criteria must come from the user, not from exploration.** Explore findings can inform *how* a criterion is phrased, but never invent criteria based on what you found in the codebase.
+
+### Step 3: Write the spec
+
+Draft using the confirmed direction from Step 2 — not agent assumptions. Use this template:
 
 ```
 status: draft
@@ -43,12 +56,13 @@ date: [YYYY-MM-DD, today's date]
 - [ ] [Something verifiable — visible in the running app, covered by a test, or confirmed by output]
 - [ ] [Another criterion]
 
+## Non-goals
+[What's explicitly out of scope, if the user named any. Omit section if empty.]
+
 ## Notes
 [Design decisions, open questions, or implementation detail. Omit section if empty.]
 ```
 
-Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description and the Explore findings (conventions, relevant files, related specs).
+Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description, the confirmed technical approach, and Explore findings (conventions, relevant files, related specs).
 
-**Acceptance criteria must come from the user, not from exploration.** Never invent criteria based on what you found in the codebase — Explore findings can inform *how* a criterion is phrased, but not *what* the criteria are. If the user's message already gives concrete, verifiable criteria (a list of musts, a bug description, a specific behavior), use those directly — do not ask for anything they've already covered. If it's too vague to produce verifiable criteria (e.g. just a feature name or a one-line wish), ask one direct question: "What does done look like for this?" or "What's the happy-path scenario?" — then draft from the answer. Don't run a multi-phase requirements interview; one clarifying round is enough.
-
-Write the result to `.spox/<name>.md`. After writing, run `spox view <name>` to confirm it was picked up.
+Write the result to `.spox/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
