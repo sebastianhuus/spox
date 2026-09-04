@@ -82,9 +82,14 @@ fn skill_status() -> SkillStatus {
     }
 }
 
-fn maybe_update_skill() {
+fn maybe_update_skill(verbose: bool) {
     match skill_status() {
-        SkillStatus::Current | SkillStatus::NotInstalled => {}
+        SkillStatus::Current => {
+            if verbose {
+                eprintln!("spox: skills already up to date");
+            }
+        }
+        SkillStatus::NotInstalled => {}
         SkillStatus::Outdated => {
             cmd_skill_install();
         }
@@ -872,7 +877,7 @@ fn cmd_update() {
         eprintln!("spox: rebuilt successfully");
     }
 
-    maybe_update_skill();
+    maybe_update_skill(true);
 }
 
 fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
@@ -927,7 +932,7 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_t
         } else {
             eprintln!("no specs found in {}", spox_dir.display());
         }
-        maybe_update_skill();
+        maybe_update_skill(false);
         return;
     }
 
@@ -964,7 +969,7 @@ fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_t
         store_mtime_cache(&spox_dir, &spec.name, &spec_path);
     }
 
-    maybe_update_skill();
+    maybe_update_skill(false);
 }
 
 fn cmd_view_raw(spec_name: &str) {
@@ -987,7 +992,7 @@ fn cmd_view_criteria(spec_name: &str) {
     println!("{:<width$}  {}", spec.name, spec.status, width = spec.name.len());
     print_criteria(&spec.open_criteria);
     store_mtime_cache(&spox_dir, spec_name, &spec_path);
-    maybe_update_skill();
+    maybe_update_skill(false);
 }
 
 fn cmd_help() {
