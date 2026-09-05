@@ -69,4 +69,4 @@ Write the result to `.spox/<name>.md`, then run `spox view <name>` to confirm it
 
 ## MarkReview
 
-!`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it — e.g. Want me to open this in MarkReview? This is an offer, not an automatic action: only run open -a MarkReview .spox/<name>.md (the path you just wrote) if the user says yes." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`
+!`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it by putting the command in its own bash-tagged fenced code block: open -a MarkReview .spox/<name>.md, using the path you just wrote. Do not ask in prose and do not run the command yourself — the harness renders a Run button on a bash code block, so the user launches it themselves with one click if they want to." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`
