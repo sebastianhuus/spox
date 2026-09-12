@@ -503,7 +503,7 @@ fn cmd_set_status(spec_name: &str, value: &str) {
 
 fn allow_check_cmd(project_dir: &PathBuf) {
     let claude_dir = project_dir.join(".claude");
-    let settings_path = claude_dir.join("settings.json");
+    let settings_path = claude_dir.join("settings.local.json");
 
     let mut settings: Value = fs::read_to_string(&settings_path)
         .ok()
@@ -526,14 +526,14 @@ fn allow_check_cmd(project_dir: &PathBuf) {
         }
         let json = serde_json::to_string_pretty(&settings).unwrap_or_default();
         fs::write(&settings_path, json + "\n").unwrap_or_else(|e| {
-            eprintln!("warning: could not write settings.json: {}", e);
+            eprintln!("warning: could not write settings.local.json: {}", e);
         });
         println!("settings: allowed Bash(spox check *)");
     }
 }
 
 fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
-    let settings_path = root.join(".claude").join("settings.json");
+    let settings_path = root.join(".claude").join("settings.local.json");
 
     let mut settings: Value = fs::read_to_string(&settings_path)
         .ok()
@@ -596,7 +596,7 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
 
     let json = serde_json::to_string_pretty(&settings).unwrap_or_default();
     fs::write(&settings_path, json + "\n").unwrap_or_else(|e| {
-        eprintln!("warning: could not write settings.json: {}", e);
+        eprintln!("warning: could not write settings.local.json: {}", e);
     });
 
     if !added_cmds.is_empty() {
