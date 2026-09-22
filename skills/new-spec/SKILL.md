@@ -67,6 +67,25 @@ Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from th
 
 Write the result to `.spox/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
 
+### Step 4: In a cloud session, push and link it
+
+A local session and a cloud session need different things here. Locally, the user has the file on disk (and can open it in MarkReview — see below); in a cloud/remote session there is no local filesystem for them to look at once you stop typing, so the spec has to actually reach them.
+
+Detect a cloud session with:
+
+```bash
+[ "$CLAUDE_CODE_REMOTE" = "true" ] && echo cloud || echo local
+```
+
+(`CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE` and `CLAUDE_CODE_ENTRYPOINT=remote_desktop` are also present in cloud sessions and can corroborate this, but `CLAUDE_CODE_REMOTE` alone is sufficient.)
+
+When it's a cloud session:
+
+1. Commit the new `.spox/<name>.md` file and push it to the current branch (`git push -u origin <branch>`), same as any other deliverable in this session.
+2. Give the user a direct link to the file on that branch so they can open it without local access: `https://github.com/<owner>/<repo>/blob/<branch>/.spox/<name>.md` (owner/repo/branch from the repo's origin remote and current branch).
+
+When it's a local session, skip both steps — `spox view <name>` already showed the content, the file is on their disk, and committing an unreviewed draft on every write would just be noise.
+
 ## MarkReview
 
 !`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it by putting the command in its own bash-tagged fenced code block: open -a MarkReview .spox/<name>.md, using the path you just wrote. Do not ask in prose and do not run the command yourself — the harness renders a Run button on a bash code block, so the user launches it themselves with one click if they want to." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`
