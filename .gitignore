@@ -1,3 +1,4 @@
 /target/
 .spox/.cache/
 /.claude
+/node_modules/
