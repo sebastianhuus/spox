@@ -722,11 +722,12 @@ fn cmd_init() {
 
     let project_dir = spox_dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| spox_dir.clone());
 
-    // Ignore .spox/.cache/ via a self-contained .gitignore inside .spox/,
+    // Ignore .spox/.cache/ and .spox/.format.md (a synced template, not
+    // project state) via a self-contained .gitignore inside .spox/,
     // rather than editing the project's own .gitignore. This works no
     // matter where .spox/ lives and needs no git-root detection.
     let spox_gitignore = spox_dir.join(".gitignore");
-    fs::write(&spox_gitignore, ".cache/\n").unwrap_or_else(|e| {
+    fs::write(&spox_gitignore, ".cache/\n.format.md\n").unwrap_or_else(|e| {
         eprintln!("error: could not write {}: {}", spox_gitignore.display(), e);
         std::process::exit(1);
     });
