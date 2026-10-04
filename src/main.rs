@@ -9,6 +9,10 @@ const SDD_MD: &str = include_str!("../skills/spox/sdd.md");
 const SPEC_TEMPLATE_MD: &str = include_str!("../skills/spox/spec-template.md");
 const CHECK_CHAIN_SH: &str = include_str!("../skills/spox/check-chain.sh");
 const NEW_SPEC_SKILL_MD: &str = include_str!("../skills/new-spec/SKILL.md");
+// Installed skills are managed (and self-updated) by spox, so each skill
+// folder ignores its own contents rather than touching the project's
+// .gitignore or the shared .claude/skills/ folder.
+const SKILL_GITIGNORE: &str = "*\n";
 const FORMAT_MD: &str = include_str!("../format.md");
 
 const VALID_STATUSES: [&str; 5] = ["draft", "ongoing", "pending-verification", "completed", "discarded"];
@@ -668,6 +672,10 @@ fn cmd_skill_install() {
                 eprintln!("warning: could not chmod check-chain.sh: {}", e);
             });
         }
+    }
+
+    for dir in [&dest_dir, &new_spec_dir] {
+        write_skill_file(&dir.join(".gitignore"), SKILL_GITIGNORE);
     }
 
     let old_file = dest_dir.join("SPOX.md");
