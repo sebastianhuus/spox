@@ -3,10 +3,10 @@ status: completed
 # Init gitignore
 
 ## Intent
-When `spox init` creates `.spox/`, it should ensure `.spox/.cache/` is never tracked by git. It does this with a self-contained `.spox/.gitignore` rather than editing the project's own `.gitignore` — this keeps the ignore rule scoped to `.spox/`, works no matter where `.spox/` lives in the tree, and requires no git-root detection.
+When `spox init` creates `.spox/`, it should ensure `.spox/.cache/` and `.spox/.format.md` are never tracked by git (the cache is generated, and `.format.md` is a template kept in sync with the binary, not project state). It does this with a self-contained `.spox/.gitignore` rather than editing the project's own `.gitignore` — this keeps the ignore rule scoped to `.spox/`, works no matter where `.spox/` lives in the tree, and requires no git-root detection.
 
 ## Acceptance criteria
-- [x] Running `spox init` creates `.spox/.gitignore` containing `.cache/`
+- [x] Running `spox init` creates `.spox/.gitignore` containing `.cache/` and `.format.md`
 - [x] The project's own `.gitignore` (if any) is never modified by `spox init`
 - [x] The init output reports the file (e.g. `created: .spox/.gitignore`)
 
