@@ -7,6 +7,7 @@ I was missing spec driven development from Kiro so I made my own little cli. Pro
 - `spox` will traverse current repo/folder until it finds `.spox`, then list all specs (md files) in that folder.
   - specs are sorted by status group: active first, then draft/backlog, then completed
   - each spec is prefixed with a status, which will also be listed in the tool output
+- if there is no `.spox` above the current directory, `spox` looks below the git root (5 levels, skipping hidden dirs, `node_modules`, `target`) and uses it when exactly one is found. With several it lists them and exits; pick one with `spox -C <dir> <command>` or `SPOX_PROJECT=<dir>`. Outside a git repo there is no downward search.
 - `spox list -c` / `spox list --criteria` lists open criteria for each spec. A criterion is marked with `- [ ]` in markdown and checked off with `- [x]`
 
 **Commands**
@@ -15,6 +16,9 @@ spox list                      # list all specs with their status
 spox list -c / --criteria      # also show labelled open criteria under each spec
 spox view <spec>               # show a single spec (raw markdown)
 spox view -c <spec>            # show a single spec's open criteria dashboard
+spox path                      # print the resolved .spox directory
+spox format                    # print the project's .format.md
+spox -C <dir> <command>        # act as if started in <dir> (project, a dir inside it, or its .spox); also SPOX_PROJECT=<dir>
 spox init                      # create .spox/ in the current directory
 spox check <spec> <label>      # check off the criterion with the given label (stable across reorders)
 spox check <spec> <n>          # check off the nth open criterion (positional fallback)
