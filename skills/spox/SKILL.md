@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version) Bash(cat *)
+allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version) Bash(spox path) Bash(spox format) Bash(spox -C * list) Bash(spox -C * list -c) Bash(spox -C * list --criteria) Bash(spox -C * view *) Bash(spox -C * check *) Bash(spox -C * path) Bash(spox -C * format) Bash(cat *)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -13,7 +13,7 @@ hooks:
 
 ## What spox does
 
-`spox` is an installed CLI tool that lists and updates spec statuses from a `.spox/` directory, walking up the tree from CWD (git-style) to find it. Run it via Bash.
+`spox` is an installed CLI tool that lists and updates spec statuses from a `.spox/` directory. It walks up the tree from CWD (git-style) to find it; if there is none above, it looks below the git root for a nested one (up to 5 levels, skipping hidden dirs, `node_modules` and `target`) and uses it when exactly one is found. If several are found it exits with an error naming them. Pick one with `-C` (see below). Run it via Bash.
 
 ## Commands
 
@@ -25,6 +25,9 @@ spox list -t                   # show each spec's one-line tagline (if set)
 spox list --tagline            # same as -t
 spox view <spec>               # show the full raw spec file
 spox view -c <spec>            # show a single spec's open criteria in dashboard format
+spox path                      # print the resolved .spox directory (absolute)
+spox format                    # print the project's .format.md (spec format conventions)
+spox -C <dir> <command> ...    # run any command as if started in <dir>: the project dir, a dir inside it, or its .spox
 spox init                      # create .spox/ in the current directory (new projects)
 spox check <spec> <label>      # check off the criterion with the given label (stable, preferred)
 spox check <spec> <n>          # check off the nth open criterion (positional — avoid in scripts)
@@ -34,6 +37,14 @@ spox skill install             # copy this skill into the project's .claude/skil
 spox version                   # print the installed version
 spox help                      # show usage
 ```
+
+## Which project? (nested `.spox/`)
+
+- `.spox/` at or above CWD: used as-is, nothing else to do. This is the common case.
+- Otherwise, one nested `.spox/` below the git root (e.g. `notes/app/.spox`): used automatically; spox notes `using <path>` on stderr.
+- Several nested ones: every command fails with `multiple spox projects found:` and the project dirs. Ask the user which one, then put `-C <project-dir>` first on every call: `spox -C app list -c`. `SPOX_PROJECT=<dir>` in the environment does the same; `-C` wins over it.
+- Outside a git repo there is no downward search; use `-C`.
+- Always write new specs into the directory `spox path` prints, never an assumed `.spox/` at the repo root. Keep each spox call a single command (no `cd dir && spox ...`; `-C` replaces that).
 
 ## Reading the output
 
@@ -133,7 +144,7 @@ If the file exists, parse the JSON:
 
 ## Specs are repo-scoped, not global
 
-A spec name only resolves within the `.spox/` directory of the repo it was created in — `spox view`/`spox list` walk up from CWD to find *that repo's* `.spox/` and nowhere else. If you're handed a spec name or its contents that references a **different** repository (e.g. relayed from another agent's exploration, or from the user pasting in cross-repo context), do **not** try to `spox view` or search for it in your own workspace — it won't be there, and that's expected, not an error. Treat the content you were given as authoritative data and use it directly instead of re-deriving it. Only fall back to a local lookup if it's genuinely ambiguous which repo the reference belongs to.
+A spec name only resolves within the `.spox/` directory of the repo it was created in — `spox view`/`spox list` find *that repo's* `.spox/` (walking up from CWD, or one nested below the git root) and nowhere else. If you're handed a spec name or its contents that references a **different** repository (e.g. relayed from another agent's exploration, or from the user pasting in cross-repo context), do **not** try to `spox view` or search for it in your own workspace — it won't be there, and that's expected, not an error. Treat the content you were given as authoritative data and use it directly instead of re-deriving it. Only fall back to a local lookup if it's genuinely ambiguous which repo the reference belongs to.
 
 ## Common tasks
 

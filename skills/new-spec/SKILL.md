@@ -1,20 +1,26 @@
 ---
 name: new-spec
 description: Create a new spox spec. Use when the user wants to add a spec, track a new feature, or start new work in a .spox/ project.
-allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(cat *), Bash(git rev-parse *), Bash(mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'"), Bash(open -a MarkReview *), Read, Write, Glob, Grep, Agent, AskUserQuestion
+allowed-tools: Bash(spox list -c), Bash(spox view *), Bash(spox path), Bash(spox format), Bash(spox -C * list -c), Bash(spox -C * view *), Bash(spox -C * path), Bash(spox -C * format), Bash(cat *), Bash(mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'"), Bash(open -a MarkReview *), Read, Write, Glob, Grep, Agent, AskUserQuestion
 ---
 
 ## Current specs
 
 !`spox list -c`
 
+## Spec directory
+
+!`spox path`
+
 ## Project format conventions
 
-!`cat "$(git rev-parse --show-toplevel 2>/dev/null)/.spox/.format.md" 2>/dev/null || true`
+!`spox format`
 
 ## Instructions
 
-Create a new spec file in `.spox/`.
+Create a new spec file in the spec directory printed above (normally named `.spox`). It may sit below the git root rather than at it, so always use that printed path, never an assumed `.spox/` at the repo root.
+
+spox found that project by walking up from the current directory, or else by searching below the git root. If the output above is instead an error saying multiple spox projects were found, ask the user which one, then pass `-C <project-dir>` as the first argument of every spox call (`spox -C <project-dir> list -c`, `spox -C <project-dir> view <name>`, and so on) and re-read `spox -C <project-dir> format` before drafting. Run each spox call as its own command; do not chain or pipe them.
 
 If the user named a feature in their message, derive the spec name from it. Otherwise ask for a feature name first. Names must be short kebab-case identifiers (`map-grid`, `auth-refresh`) — not task descriptions (`implement-map`, `fix-auth-bug`).
 
@@ -22,7 +28,7 @@ If the user named a feature in their message, derive the spec name from it. Othe
 
 Before drafting, use the Agent tool with `subagent_type=Explore` to scan for relevant context. Give it this prompt (substituting the feature name):
 
-> Search this repo for context relevant to a new spec called "<feature-name>". Find: (1) any existing .spox/ specs with similar names or overlapping topics, (2) source files or modules the feature is likely to touch — grep for the feature name and related terms, (3) naming or structural conventions visible in adjacent code. Return a concise summary: related specs, relevant file paths, conventions to follow. If nothing relevant is found, say so briefly.
+> Search this repo for context relevant to a new spec called "<feature-name>". The spox project lives in <project-dir> (the parent of the spec directory printed above); it may be a subfolder of a larger repo, so focus there first. Find: (1) any existing specs in <spec-directory> with similar names or overlapping topics, (2) source files or modules the feature is likely to touch — grep for the feature name and related terms, (3) naming or structural conventions visible in adjacent code. Return a concise summary: related specs, relevant file paths, conventions to follow. If nothing relevant is found, say so briefly.
 
 ### Step 2: Confirm direction with the user — before drafting
 
@@ -65,7 +71,7 @@ date: [YYYY-MM-DD, today's date]
 
 Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description, the confirmed technical approach, and Explore findings (conventions, relevant files, related specs).
 
-Write the result to `.spox/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
+Write the result to `<spec-directory>/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
 
 ### Step 4: In a cloud session, push and link it
 
@@ -81,11 +87,11 @@ Detect a cloud session with:
 
 When it's a cloud session:
 
-1. Commit the new `.spox/<name>.md` file and push it to the current branch (`git push -u origin <branch>`), same as any other deliverable in this session.
-2. Give the user a direct link to the file on that branch so they can open it without local access: `https://github.com/<owner>/<repo>/blob/<branch>/.spox/<name>.md` (owner/repo/branch from the repo's origin remote and current branch).
+1. Commit the new `<spec-directory>/<name>.md` file and push it to the current branch (`git push -u origin <branch>`), same as any other deliverable in this session.
+2. Give the user a direct link to the file on that branch so they can open it without local access: `https://github.com/<owner>/<repo>/blob/<branch>/<path-from-repo-root>/<name>.md` (owner/repo/branch from the repo's origin remote and current branch; the path is the spec file's path relative to the git root, e.g. `.spox/<name>.md` or `sub/project/.spox/<name>.md`).
 
 When it's a local session, skip both steps — `spox view <name>` already showed the content, the file is on their disk, and committing an unreviewed draft on every write would just be noise.
 
 ## MarkReview
 
-!`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it by putting the command in its own bash-tagged fenced code block: open -a MarkReview .spox/<name>.md, using the path you just wrote. Do not ask in prose and do not run the command yourself — the harness renders a Run button on a bash code block, so the user launches it themselves with one click if they want to." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`
+!`mdfind "kMDItemCFBundleIdentifier == 'com.markreview.app'" | grep -q . && echo "MarkReview is installed on this machine. After writing a new spec, offer to open it by putting the command in its own bash-tagged fenced code block: open -a MarkReview <spec-directory>/<name>.md, using the path you just wrote. Do not ask in prose and do not run the command yourself — the harness renders a Run button on a bash code block, so the user launches it themselves with one click if they want to." || echo "MarkReview is not installed on this machine. Do not offer to open specs in it. If asked, say it is not installed."`

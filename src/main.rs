@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use serde_json::{json, Value};
 
@@ -25,8 +25,32 @@ struct Spec {
     open_criteria: Vec<String>,
 }
 
-fn find_spox_dir() -> Option<PathBuf> {
-    let mut dir = env::current_dir().ok()?;
+// How far below the git root to look for a nested `.spox` (the project dir
+// containing it may be at most this many levels down).
+const MAX_SEARCH_DEPTH: usize = 5;
+const SKIP_DIRS: [&str; 2] = ["node_modules", "target"];
+
+enum Discovery {
+    Above(PathBuf),
+    Below(PathBuf),
+    Ambiguous(Vec<PathBuf>),
+    NotFound,
+}
+
+fn git_root_of(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+fn find_spox_above(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
     loop {
         let candidate = dir.join(".spox");
         if candidate.is_dir() {
@@ -38,16 +62,56 @@ fn find_spox_dir() -> Option<PathBuf> {
     }
 }
 
-fn find_project_root() -> PathBuf {
-    let mut dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    loop {
-        if dir.join(".git").exists() {
-            return dir;
+fn collect_spox_below(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        // file_type() does not follow symlinks, so linked dirs are skipped.
+        let Ok(file_type) = entry.file_type() else { continue };
+        if !file_type.is_dir() {
+            continue;
         }
-        if !dir.pop() {
-            return env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') || SKIP_DIRS.contains(&name.as_ref()) {
+            continue;
+        }
+        let path = entry.path();
+        let spox = path.join(".spox");
+        if spox.is_dir() {
+            found.push(spox);
+        } else if depth < MAX_SEARCH_DEPTH {
+            collect_spox_below(&path, depth + 1, found);
         }
     }
+}
+
+fn find_spox_below(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    collect_spox_below(root, 1, &mut found);
+    found.sort();
+    found
+}
+
+// Nearest `.spox` at or above `start` wins, exactly as git finds `.git`. Only
+// if there is none, look for nested ones below the git root. Outside a git
+// repo there is no downward search: crawling an arbitrary directory (e.g. the
+// home folder) is slow and can trip OS privacy prompts; use -C there.
+fn discover(start: &Path) -> Discovery {
+    if let Some(dir) = find_spox_above(start) {
+        return Discovery::Above(dir);
+    }
+    let Some(root) = git_root_of(start) else { return Discovery::NotFound };
+    let mut found = find_spox_below(&root);
+    match found.len() {
+        0 => Discovery::NotFound,
+        1 => Discovery::Below(found.remove(0)),
+        _ => Discovery::Ambiguous(found),
+    }
+}
+
+fn find_project_root() -> PathBuf {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    git_root_of(&cwd).unwrap_or(cwd)
 }
 
 enum SkillStatus {
@@ -149,13 +213,85 @@ fn sync_format_md(spox_dir: &std::path::Path) {
     }
 }
 
+fn display_path(path: &Path, cwd: &Path) -> String {
+    path.strip_prefix(cwd).unwrap_or(path).display().to_string()
+}
+
 fn require_spox_dir() -> PathBuf {
-    let dir = find_spox_dir().unwrap_or_else(|| {
-        eprintln!("error: no .spox directory found in this or any parent directory");
+    let cwd = env::current_dir().unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
         std::process::exit(1);
     });
+    let dir = match discover(&cwd) {
+        Discovery::Above(dir) => dir,
+        Discovery::Below(dir) => {
+            eprintln!(
+                "spox: no .spox above the current directory; using {}",
+                display_path(&dir, &cwd)
+            );
+            dir
+        }
+        Discovery::Ambiguous(dirs) => {
+            eprintln!("error: multiple spox projects found:");
+            for dir in &dirs {
+                let project = dir.parent().unwrap_or(dir);
+                eprintln!("  {}", display_path(project, &cwd));
+            }
+            eprintln!("pick one with `spox -C <dir> <command>` or set SPOX_PROJECT=<dir>");
+            std::process::exit(1);
+        }
+        Discovery::NotFound => {
+            eprintln!("error: no .spox directory found in this or any parent directory");
+            std::process::exit(1);
+        }
+    };
     sync_format_md(&dir);
     dir
+}
+
+// Behave as if spox had been started in `dir`, like `git -C`. `dir` may be a
+// project dir, any dir inside it, or the `.spox` dir itself.
+fn change_project_dir(dir: &str, origin: &str) {
+    fn fail(origin: &str, msg: String) -> ! {
+        eprintln!("error: {}: {}", origin, msg);
+        std::process::exit(1);
+    }
+    let mut path = fs::canonicalize(dir)
+        .unwrap_or_else(|e| fail(origin, format!("cannot use '{}': {}", dir, e)));
+    if !path.is_dir() {
+        fail(origin, format!("'{}' is not a directory", dir));
+    }
+    if path.file_name().map(|n| n == ".spox").unwrap_or(false) {
+        path.pop();
+    }
+    env::set_current_dir(&path)
+        .unwrap_or_else(|e| fail(origin, format!("cannot change to '{}': {}", dir, e)));
+}
+
+// Handle the global `-C <dir>` option (first argument) and the SPOX_PROJECT
+// env var, which `-C` overrides. Returns the remaining arguments.
+fn apply_project_option(args: Vec<String>) -> Vec<String> {
+    if args.first().map(String::as_str) == Some("-C") {
+        let Some(dir) = args.get(1) else {
+            eprintln!("error: -C requires a directory");
+            std::process::exit(1);
+        };
+        change_project_dir(dir, "-C");
+        return args[2..].to_vec();
+    }
+    if let Some(dir) = env::var("SPOX_PROJECT").ok().filter(|d| !d.is_empty()) {
+        change_project_dir(&dir, "SPOX_PROJECT");
+    }
+    args
+}
+
+fn cmd_path() {
+    println!("{}", require_spox_dir().display());
+}
+
+fn cmd_format() {
+    let spox_dir = require_spox_dir();
+    print!("{}", read_spec_content(&spox_dir.join(".format.md")));
 }
 
 fn find_spec_path(spox_dir: &std::path::Path, spec_name: &str) -> PathBuf {
@@ -557,6 +693,16 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
         "Bash(spox status * *)",
         "Bash(spox init)",
         "Bash(spox skill install)",
+        "Bash(spox path)",
+        "Bash(spox format)",
+        "Bash(spox -C * list)",
+        "Bash(spox -C * list -c)",
+        "Bash(spox -C * list --criteria)",
+        "Bash(spox -C * view *)",
+        "Bash(spox -C * check *)",
+        "Bash(spox -C * status * *)",
+        "Bash(spox -C * path)",
+        "Bash(spox -C * format)",
     ];
     let allow = settings["permissions"]["allow"]
         .as_array()
@@ -1005,7 +1151,11 @@ fn cmd_view_criteria(spec_name: &str) {
 }
 
 fn cmd_help() {
-    println!("usage: spox <command> [options]");
+    println!("usage: spox [-C <dir>] <command> [options]");
+    println!();
+    println!("Options:");
+    println!("  -C <dir>               act as if started in <dir> (project dir, a dir inside it, or its .spox);");
+    println!("                         SPOX_PROJECT=<dir> does the same, -C wins");
     println!();
     println!("Commands:");
     println!("  list [-c] [-a] [-t]    list all specs (-c: open criteria, -a: hide completed/discarded, -t: show tagline)");
@@ -1013,6 +1163,8 @@ fn cmd_help() {
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
     println!("  status <spec> <value>  set a spec's status field ({})", VALID_STATUSES.join(", "));
+    println!("  path                   print the resolved .spox directory");
+    println!("  format                 print the project's .format.md");
     println!("  init                   create .spox/ in the current directory");
     println!("  skill install          install the spox skill into .claude/skills/");
     println!("  update                 git pull and rebuild spox");
@@ -1022,7 +1174,7 @@ fn cmd_help() {
 
 fn main() {
     maybe_self_update();
-    let args: Vec<String> = env::args().skip(1).collect();
+    let args = apply_project_option(env::args().skip(1).collect());
 
     match args.as_slice() {
         [a] if a == "version" || a == "--version" || a == "-V" => {
@@ -1033,6 +1185,12 @@ fn main() {
         }
         [a] if a == "update" => {
             cmd_update();
+        }
+        [a] if a == "path" => {
+            cmd_path();
+        }
+        [a] if a == "format" => {
+            cmd_format();
         }
         [a, b] if a == "skill" && b == "install" => {
             cmd_skill_install();
@@ -1084,7 +1242,7 @@ fn main() {
                 .collect();
 
             // Known commands that didn't match their arm = wrong number of arguments.
-            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "version", "help"];
+            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "path", "format", "version", "help"];
             let first_pos = positional.first().copied();
             if positional.len() > 1 || first_pos.map(|p| known_cmds.contains(&p)).unwrap_or(false) {
                 eprintln!("error: unexpected arguments");
