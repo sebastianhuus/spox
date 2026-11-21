@@ -18,6 +18,7 @@ spox view <spec>               # show a single spec (raw markdown)
 spox view -c <spec>            # show a single spec's open criteria dashboard
 spox attention                 # report stale ongoing/pending-verification specs; prints nothing if none
 spox attention --scope nearest # only the project containing the current directory (default: all; also SPOX_ATTENTION_SCOPE)
+spox attention --hook          # same report, but at most once per 24h per project; for session hooks
 spox path                      # print the resolved .spox directory
 spox format                    # print the project's .format.md
 spox -C <dir> <command>        # act as if started in <dir> (project, a dir inside it, or its .spox); also SPOX_PROJECT=<dir>
@@ -33,6 +34,8 @@ spox version                   # print the installed version
 **Attention report**
 
 `spox attention` is a read-only maintenance report meant to be called from a session hook. It only runs where spox is set up (a `.spox` at or above the current directory — it never searches below the git root for one) and looks at specs that are `ongoing` or `pending-verification`. With nothing to report it prints nothing and exits 0. Otherwise it prints a count line, a tree of up to 5 committed specs grouped by project, oldest first (age = days since the file's last git commit, or since its modified time outside a git repo), specs that are untracked or have uncommitted changes marked `uncommitted` in place of an age (up to 5), and a final line instructing the agent. By default it also scans every `.spox` project below the current directory (a monorepo top folder that has its own `.spox`), one group per project; `--scope nearest` / `SPOX_ATTENTION_SCOPE=nearest` limits it to the containing project. It never runs the background self-update or writes any file.
+
+`spox attention --hook` is the variant for session hooks (e.g. `spox attention --hook 2>/dev/null || true` as a SessionStart hook). It prints exactly the same report, but only if this project has not shown one in the last 24 hours, and then records the time in `~/.cache/spox/attention_hook` (one line per project, keyed by the project containing the current directory). It stays silent when nothing is due, there is nothing to report, there is no `.spox`, or the state cannot be written. Plain `spox attention` always prints and never touches that state.
 
 ```
 > spox attention

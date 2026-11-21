@@ -432,3 +432,187 @@ fn snapshot(dir: &Path) -> Vec<(PathBuf, u64, SystemTime)> {
     v.sort_by(|a, b| a.0.cmp(&b.0));
     v
 }
+
+// ---- `--hook` mode ----
+
+fn hook_state_path(sb: &Sandbox) -> PathBuf {
+    sb.home().join(".cache/spox/attention_hook")
+}
+
+// A git project with one committed, reportable spec.
+fn reportable_project(sb: &Sandbox, name: &str) -> PathBuf {
+    let repo = sb.dir(name);
+    sb.git_init(&repo);
+    let p = sb.spec(&repo, "a", "ongoing", 1);
+    sb.commit(&repo, &p, 9);
+    repo
+}
+
+fn state_lines(sb: &Sandbox) -> Vec<(u64, String)> {
+    fs::read_to_string(hook_state_path(sb))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| {
+            let (t, p) = l.split_once('\t').expect("tab-separated line");
+            (t.parse().unwrap(), p.to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn hook_when_due_prints_the_same_report_and_records_the_time() {
+    let sb = Sandbox::new("hook-due");
+    let repo = reportable_project(&sb, "repo");
+    let plain = out(&sb.attention(&repo, &[]));
+    assert!(!plain.is_empty());
+    assert!(!hook_state_path(&sb).exists(), "plain attention must not create state");
+
+    let o = sb.attention(&repo, &["--hook"]);
+    assert!(o.status.success());
+    assert_eq!(err(&o), "");
+    assert_eq!(out(&o), plain, "hook output must equal plain attention output");
+
+    let lines = state_lines(&sb);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].1, repo.display().to_string());
+    assert!(now().abs_diff(lines[0].0) < 10, "recorded time should be now");
+    // The self-update check must not have run (it would create last_check).
+    assert!(!sb.home().join(".cache/spox/last_check").exists());
+}
+
+#[test]
+fn hook_when_not_due_is_silent_and_leaves_the_state_alone() {
+    let sb = Sandbox::new("hook-notdue");
+    let repo = reportable_project(&sb, "repo");
+    assert!(!out(&sb.attention(&repo, &["--hook"])).is_empty());
+    let before = fs::read_to_string(hook_state_path(&sb)).unwrap();
+
+    let o = sb.attention(&repo, &["--hook"]);
+    assert!(o.status.success());
+    assert_eq!((out(&o), err(&o)), (String::new(), String::new()));
+    assert_eq!(fs::read_to_string(hook_state_path(&sb)).unwrap(), before);
+}
+
+#[test]
+fn hook_is_due_again_after_24_hours_and_drops_stale_lines() {
+    let sb = Sandbox::new("hook-24h");
+    let repo = reportable_project(&sb, "repo");
+    let key = repo.display().to_string();
+    fs::create_dir_all(hook_state_path(&sb).parent().unwrap()).unwrap();
+    let t = now();
+    fs::write(
+        hook_state_path(&sb),
+        format!(
+            "{}\t{}\n{}\t/some/old/project\n{}\t/some/recent/project\n",
+            t - 25 * 3600,
+            key,
+            t - 30 * 3600,
+            t - 3600
+        ),
+    )
+    .unwrap();
+
+    assert!(!out(&sb.attention(&repo, &["--hook"])).is_empty());
+    let lines = state_lines(&sb);
+    assert_eq!(lines.len(), 2, "{:?}", lines);
+    assert!(lines.iter().any(|(ts, p)| *p == key && now().abs_diff(*ts) < 10));
+    assert!(lines.iter().any(|(_, p)| p == "/some/recent/project"));
+    assert!(!lines.iter().any(|(_, p)| p == "/some/old/project"));
+}
+
+#[test]
+fn hook_treats_a_recorded_time_in_the_future_as_due() {
+    let sb = Sandbox::new("hook-future");
+    let repo = reportable_project(&sb, "repo");
+    fs::create_dir_all(hook_state_path(&sb).parent().unwrap()).unwrap();
+    fs::write(hook_state_path(&sb), format!("{}\t{}\n", now() + 7200, repo.display())).unwrap();
+    assert!(!out(&sb.attention(&repo, &["--hook"])).is_empty());
+}
+
+#[test]
+fn hook_with_unwritable_state_prints_nothing() {
+    let sb = Sandbox::new("hook-unwritable");
+    let repo = reportable_project(&sb, "repo");
+    // `~/.cache` is a regular file, so the state directory cannot be created.
+    fs::remove_dir_all(sb.home().join(".cache")).unwrap();
+    fs::write(sb.home().join(".cache"), "not a directory").unwrap();
+
+    let o = sb.attention(&repo, &["--hook"]);
+    assert!(o.status.success());
+    assert_eq!((out(&o), err(&o)), (String::new(), String::new()));
+    // Plain attention does not depend on the state and still prints.
+    assert!(!out(&sb.attention(&repo, &[])).is_empty());
+}
+
+#[test]
+fn hook_is_silent_and_records_nothing_without_spox_or_with_nothing_to_report() {
+    let sb = Sandbox::new("hook-quiet");
+    let plain_dir = sb.dir("plain");
+    let o = sb.attention(&plain_dir, &["--hook"]);
+    assert!(o.status.success());
+    assert_eq!((out(&o), err(&o)), (String::new(), String::new()));
+
+    let repo = sb.dir("done");
+    sb.git_init(&repo);
+    let p = sb.spec(&repo, "x", "completed", 1);
+    sb.commit(&repo, &p, 30);
+    let o = sb.attention(&repo, &["--hook"]);
+    assert!(o.status.success());
+    assert_eq!((out(&o), err(&o)), (String::new(), String::new()));
+
+    assert!(!hook_state_path(&sb).exists(), "nothing shown, so nothing recorded");
+
+    // Because nothing was recorded, a report that appears later is not delayed.
+    let p = sb.spec(&repo, "y", "ongoing", 1);
+    sb.commit(&repo, &p, 12);
+    assert!(!out(&sb.attention(&repo, &["--hook"])).is_empty());
+}
+
+#[test]
+fn hook_throttles_each_project_independently() {
+    let sb = Sandbox::new("hook-two");
+    let one = reportable_project(&sb, "one");
+    let two = reportable_project(&sb, "two");
+    assert!(!out(&sb.attention(&one, &["--hook"])).is_empty());
+    assert!(!out(&sb.attention(&two, &["--hook"])).is_empty());
+    assert_eq!(out(&sb.attention(&one, &["--hook"])), "");
+    assert_eq!(out(&sb.attention(&two, &["--hook"])), "");
+    assert_eq!(state_lines(&sb).len(), 2);
+}
+
+#[test]
+fn plain_attention_never_touches_the_throttle_state() {
+    let sb = Sandbox::new("plain-state");
+    let repo = reportable_project(&sb, "repo");
+    // Fresh state for this very project: plain attention must still print,
+    // and leave the file byte-for-byte alone.
+    fs::create_dir_all(hook_state_path(&sb).parent().unwrap()).unwrap();
+    let content = format!("{}\t{}\n", now(), repo.display());
+    fs::write(hook_state_path(&sb), &content).unwrap();
+    assert!(!out(&sb.attention(&repo, &[])).is_empty());
+    assert_eq!(fs::read_to_string(hook_state_path(&sb)).unwrap(), content);
+}
+
+#[test]
+fn hook_follows_scope_rules_but_throttles_by_containing_project() {
+    let sb = Sandbox::new("hook-scope");
+    let top = monorepo(&sb);
+    let nearest_plain = out(&sb.attention(&top, &["--scope", "nearest"]));
+    let o = sb.attention(&top, &["--hook", "--scope", "nearest"]);
+    assert_eq!(out(&o), nearest_plain);
+    // Same containing project, different scope: already shown today.
+    assert_eq!(out(&sb.attention(&top, &["--hook"])), "");
+    assert_eq!(state_lines(&sb).len(), 1);
+}
+
+#[test]
+fn hook_usage_errors_are_still_loud_and_record_nothing() {
+    let sb = Sandbox::new("hook-usage");
+    let repo = reportable_project(&sb, "repo");
+    for args in [&["--hook", "--scope", "bogus"][..], &["--hook", "--nope"][..]] {
+        let o = sb.attention(&repo, args);
+        assert_eq!(o.status.code(), Some(1), "{:?}", args);
+        assert!(err(&o).starts_with("error:"), "{}", err(&o));
+    }
+    assert!(!hook_state_path(&sb).exists());
+}
