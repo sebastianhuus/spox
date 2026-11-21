@@ -1126,9 +1126,11 @@ fn mtime_age_days(path: &Path) -> Option<u64> {
 }
 
 struct AttentionEntry {
-    label: String,
+    project: usize,
+    name: String,
     status: String,
-    age_days: u64,
+    // None = uncommitted (untracked or with uncommitted changes).
+    age_days: Option<u64>,
     open: usize,
 }
 
@@ -1150,48 +1152,56 @@ fn attention_projects(cwd: &Path, scope: AttentionScope) -> Vec<PathBuf> {
     dirs
 }
 
+// Header for a project in the report: the project containing the current
+// directory is named by its own folder, the others by their path below it.
+fn attention_project_label(project: &Path, containing: bool, cwd: &Path) -> String {
+    let own_name = || {
+        project
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| ".".to_string())
+    };
+    if containing {
+        return own_name();
+    }
+    match project.strip_prefix(cwd) {
+        Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+        _ => own_name(),
+    }
+}
+
 fn cmd_attention(scope: AttentionScope) {
     let Ok(cwd) = env::current_dir() else { return };
     let spox_dirs = attention_projects(&cwd, scope);
-    let multi = spox_dirs.len() > 1;
 
-    let mut committed: Vec<AttentionEntry> = Vec::new();
-    let mut uncommitted: Vec<String> = Vec::new();
+    let mut labels: Vec<String> = Vec::new();
+    let mut entries: Vec<AttentionEntry> = Vec::new();
 
-    for spox_dir in &spox_dirs {
-        let Ok(specs) = read_specs(spox_dir) else { continue };
+    for (idx, spox_dir) in spox_dirs.iter().enumerate() {
         let project = spox_dir.parent().unwrap_or(spox_dir);
-        let prefix = if multi {
-            let rel = project.strip_prefix(&cwd).unwrap_or(Path::new(""));
-            let rel = if rel.as_os_str().is_empty() { ".".to_string() } else { rel.display().to_string() };
-            format!("{}:", rel)
-        } else {
-            String::new()
-        };
+        labels.push(attention_project_label(project, idx == 0, &cwd));
+        let Ok(specs) = read_specs(spox_dir) else { continue };
         let use_git = in_git_work_tree(spox_dir);
 
         for spec in specs.iter().filter(|s| ATTENTION_STATUSES.contains(&s.status.as_str())) {
             let file = format!("{}.md", spec.name);
-            let label = format!("{}{}", prefix, spec.name);
             let age_days = if use_git {
                 match spec_git_state(spox_dir, &file) {
-                    GitState::Uncommitted => {
-                        uncommitted.push(label);
-                        continue;
-                    }
+                    GitState::Uncommitted => None,
                     GitState::Committed(secs) => {
                         let now = SystemTime::now()
                             .duration_since(SystemTime::UNIX_EPOCH)
                             .map(|d| d.as_secs())
                             .unwrap_or(secs);
-                        now.saturating_sub(secs) / 86400
+                        Some(now.saturating_sub(secs) / 86400)
                     }
                 }
             } else {
-                mtime_age_days(&spox_dir.join(&file)).unwrap_or(0)
+                Some(mtime_age_days(&spox_dir.join(&file)).unwrap_or(0))
             };
-            committed.push(AttentionEntry {
-                label,
+            entries.push(AttentionEntry {
+                project: idx,
+                name: spec.name.clone(),
                 status: spec.status.clone(),
                 age_days,
                 open: spec.open_criteria.len(),
@@ -1199,31 +1209,56 @@ fn cmd_attention(scope: AttentionScope) {
         }
     }
 
-    let total = committed.len() + uncommitted.len();
+    let total = entries.len();
     if total == 0 {
         return;
     }
 
-    committed.sort_by(|a, b| b.age_days.cmp(&a.age_days).then(a.label.cmp(&b.label)));
-    uncommitted.sort();
+    // Up to 5 committed specs (oldest first) and up to 5 uncommitted ones.
+    let by_name = |a: &&AttentionEntry, b: &&AttentionEntry| {
+        labels[a.project].cmp(&labels[b.project]).then(a.name.cmp(&b.name))
+    };
+    let mut committed: Vec<&AttentionEntry> = entries.iter().filter(|e| e.age_days.is_some()).collect();
+    committed.sort_by(|a, b| b.age_days.cmp(&a.age_days).then_with(|| by_name(a, b)));
+    committed.truncate(ATTENTION_MAX_LISTED);
+    let mut uncommitted: Vec<&AttentionEntry> = entries.iter().filter(|e| e.age_days.is_none()).collect();
+    uncommitted.sort_by(by_name);
+    uncommitted.truncate(ATTENTION_MAX_LISTED);
+    let hidden = total - committed.len() - uncommitted.len();
+
+    // Projects with a shown committed spec come first (oldest spec first),
+    // then projects that only have uncommitted ones.
+    let mut order: Vec<usize> = Vec::new();
+    for e in committed.iter().chain(uncommitted.iter()) {
+        if !order.contains(&e.project) {
+            order.push(e.project);
+        }
+    }
 
     let mut report = if total == 1 {
         "spox attention: 1 spec needs a look\n".to_string()
     } else {
         format!("spox attention: {} specs need a look\n", total)
     };
-    for e in committed.iter().take(ATTENTION_MAX_LISTED) {
-        report.push_str(&format!("{}  {}  {}d  {} open\n", e.label, e.status, e.age_days, e.open));
-    }
-    if committed.len() > ATTENTION_MAX_LISTED {
-        report.push_str(&format!("…and {} more\n", committed.len() - ATTENTION_MAX_LISTED));
-    }
-    if !uncommitted.is_empty() {
-        let mut line = uncommitted.iter().take(ATTENTION_MAX_LISTED).cloned().collect::<Vec<_>>().join(", ");
-        if uncommitted.len() > ATTENTION_MAX_LISTED {
-            line.push_str(&format!(", …and {} more", uncommitted.len() - ATTENTION_MAX_LISTED));
+    for project in order {
+        report.push_str(&labels[project]);
+        report.push('\n');
+        let rows: Vec<&&AttentionEntry> = committed
+            .iter()
+            .chain(uncommitted.iter())
+            .filter(|e| e.project == project)
+            .collect();
+        for (i, e) in rows.iter().enumerate() {
+            let branch = if i + 1 == rows.len() { "┗━" } else { "┣━" };
+            let age = match e.age_days {
+                Some(d) => format!("{}d", d),
+                None => "uncommitted".to_string(),
+            };
+            report.push_str(&format!("  {} {}  {}  {}  {} open\n", branch, e.name, e.status, age, e.open));
         }
-        report.push_str(&format!("uncommitted: {}\n", line));
+    }
+    if hidden > 0 {
+        report.push_str(&format!("…and {} more\n", hidden));
     }
     report.push_str(ATTENTION_AGENT_LINE);
     report.push('\n');

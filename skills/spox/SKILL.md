@@ -45,14 +45,18 @@ spox help                      # show usage
 `spox attention` is a read-only maintenance report, normally called by a session hook rather than by hand. It prints nothing (exit 0) when there is nothing to flag or no `.spox/` at or above CWD. Otherwise the output looks like this:
 
 ```
-spox attention: 3 specs need a look
-services/api:auth  ongoing  30d  2 open
-.:orchestration  ongoing  5d  1 open
-uncommitted: services/web:ui
+spox attention: 4 specs need a look
+services/api
+  ┗━ auth  ongoing  30d  2 open
+services/web
+  ┣━ ui  pending-verification  15d  1 open
+  ┗━ draft-new  ongoing  uncommitted  2 open
+mono
+  ┗━ orchestration  ongoing  5d  1 open
 Agent: mention this briefly at a natural moment, offer to go through it, and do not change any spec without asking.
 ```
 
-Each listed line is `<spec>  <status>  <age>d  <open> open` (age = days since the spec's last git commit; oldest first, at most 5). `uncommitted:` names `ongoing`/`pending-verification` specs that are untracked or have uncommitted changes — specs should be committed once finalized. Names carry a `<project-path>:` prefix when several projects were scanned. When you see this report (in a hook's output or by running the command), follow its last line: mention it briefly at a natural moment, offer to go through it, and never change a spec without asking.
+The report is a tree grouped by project. Each spec line is `<name>  <status>  <age>d  <open> open` (age = days since the spec's last git commit; oldest first, at most 5). Specs that are `ongoing`/`pending-verification` but untracked or with uncommitted changes show `uncommitted` instead of an age (at most 5) — specs should be committed once finalized. Several projects mean several groups. When you see this report (in a hook's output or by running the command), follow its last line: mention it briefly at a natural moment, offer to go through it, and never change a spec without asking.
 
 ## Which project? (nested `.spox/`)
 

@@ -32,14 +32,18 @@ spox version                   # print the installed version
 
 **Attention report**
 
-`spox attention` is a read-only maintenance report meant to be called from a session hook. It only runs where spox is set up (a `.spox` at or above the current directory — it never searches below the git root for one) and looks at specs that are `ongoing` or `pending-verification`. With nothing to report it prints nothing and exits 0. Otherwise it prints a count line, up to 5 committed specs oldest first (age = days since the file's last git commit, or since its modified time outside a git repo), an `uncommitted:` line for specs that are untracked or have uncommitted changes, and a final line instructing the agent. By default it also scans every `.spox` project below the current directory (a monorepo top folder that has its own `.spox`), prefixing names with the project path; `--scope nearest` / `SPOX_ATTENTION_SCOPE=nearest` limits it to the containing project. It never runs the background self-update or writes any file.
+`spox attention` is a read-only maintenance report meant to be called from a session hook. It only runs where spox is set up (a `.spox` at or above the current directory — it never searches below the git root for one) and looks at specs that are `ongoing` or `pending-verification`. With nothing to report it prints nothing and exits 0. Otherwise it prints a count line, a tree of up to 5 committed specs grouped by project, oldest first (age = days since the file's last git commit, or since its modified time outside a git repo), specs that are untracked or have uncommitted changes marked `uncommitted` in place of an age (up to 5), and a final line instructing the agent. By default it also scans every `.spox` project below the current directory (a monorepo top folder that has its own `.spox`), one group per project; `--scope nearest` / `SPOX_ATTENTION_SCOPE=nearest` limits it to the containing project. It never runs the background self-update or writes any file.
 
 ```
 > spox attention
-spox attention: 3 specs need a look
-services/api:auth  ongoing  30d  2 open
-.:orchestration  ongoing  5d  1 open
-uncommitted: services/web:ui
+spox attention: 4 specs need a look
+services/api
+  ┗━ auth  ongoing  30d  2 open
+services/web
+  ┣━ ui  pending-verification  15d  1 open
+  ┗━ draft-new  ongoing  uncommitted  2 open
+mono
+  ┗━ orchestration  ongoing  5d  1 open
 Agent: mention this briefly at a natural moment, offer to go through it, and do not change any spec without asking.
 ```
 
