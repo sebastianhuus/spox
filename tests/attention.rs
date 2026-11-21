@@ -173,9 +173,10 @@ fn report_lists_oldest_first_with_exact_format() {
     assert_eq!(err(&o), "");
     let expected = format!(
         "spox attention: 3 specs need a look\n\
-         old  pending-verification  40d  1 open\n\
-         mid  ongoing  10d  0 open\n\
-         young  ongoing  3d  2 open\n\
+         repo\n\
+         \x20 ┣━ old  pending-verification  40d  1 open\n\
+         \x20 ┣━ mid  ongoing  10d  0 open\n\
+         \x20 ┗━ young  ongoing  3d  2 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -198,12 +199,14 @@ fn more_than_five_are_capped() {
     let o = out(&sb.attention(&repo, &[]));
     let lines: Vec<&str> = o.lines().collect();
     assert_eq!(lines[0], "spox attention: 7 specs need a look");
+    assert_eq!(lines[1], "repo");
     // Oldest five: s7 (35d) .. s3 (15d).
-    assert_eq!(lines[1], "s7  ongoing  35d  1 open");
-    assert_eq!(lines[5], "s3  ongoing  15d  1 open");
-    assert_eq!(lines[6], "…and 2 more");
-    assert_eq!(lines[7], AGENT_LINE);
-    assert_eq!(lines.len(), 8);
+    assert_eq!(lines[2], "  ┣━ s7  ongoing  35d  1 open");
+    assert_eq!(lines[5], "  ┣━ s4  ongoing  20d  1 open");
+    assert_eq!(lines[6], "  ┗━ s3  ongoing  15d  1 open");
+    assert_eq!(lines[7], "…and 2 more");
+    assert_eq!(lines[8], AGENT_LINE);
+    assert_eq!(lines.len(), 9);
 }
 
 #[test]
@@ -234,8 +237,11 @@ fn untracked_and_modified_specs_are_uncommitted() {
     let o = out(&sb.attention(&repo, &[]));
     let expected = format!(
         "spox attention: 4 specs need a look\n\
-         tracked  ongoing  20d  1 open\n\
-         uncommitted: alpha-new, modified, zeta-new\n\
+         repo\n\
+         \x20 ┣━ tracked  ongoing  20d  1 open\n\
+         \x20 ┣━ alpha-new  ongoing  uncommitted  1 open\n\
+         \x20 ┣━ modified  ongoing  uncommitted  1 open\n\
+         \x20 ┗━ zeta-new  pending-verification  uncommitted  1 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -252,8 +258,10 @@ fn many_uncommitted_are_capped() {
         sb.spec(&repo, &format!("n{}", i), "ongoing", 1);
     }
     let o = out(&sb.attention(&repo, &[]));
-    assert!(o.contains("uncommitted: n1, n2, n3, n4, n5, …and 2 more\n"), "{}", o);
-    assert!(o.starts_with("spox attention: 7 specs need a look\n"));
+    assert!(o.starts_with("spox attention: 7 specs need a look\nrepo\n"), "{}", o);
+    assert!(o.contains("  ┣━ n1  ongoing  uncommitted  1 open\n"), "{}", o);
+    assert!(o.contains("  ┗━ n5  ongoing  uncommitted  1 open\n…and 2 more\n"), "{}", o);
+    assert!(!o.contains("n6"), "{}", o);
 }
 
 #[test]
@@ -270,8 +278,9 @@ fn without_git_falls_back_to_mtime_and_nothing_is_uncommitted() {
     let o = out(&sb.attention(&dir, &[]));
     let expected = format!(
         "spox attention: 2 specs need a look\n\
-         old  ongoing  12d  1 open\n\
-         fresh  pending-verification  0d  1 open\n\
+         plain\n\
+         \x20 ┣━ old  ongoing  12d  1 open\n\
+         \x20 ┗━ fresh  pending-verification  0d  1 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -302,9 +311,12 @@ fn top_folder_with_spox_reports_all_subprojects_with_prefixes() {
     let o = out(&sb.attention(&top, &[]));
     let expected = format!(
         "spox attention: 3 specs need a look\n\
-         services/api:auth  ongoing  30d  2 open\n\
-         services/web:ui  pending-verification  15d  1 open\n\
-         .:orchestration  ongoing  5d  1 open\n\
+         services/api\n\
+         \x20 ┗━ auth  ongoing  30d  2 open\n\
+         services/web\n\
+         \x20 ┗━ ui  pending-verification  15d  1 open\n\
+         mono\n\
+         \x20 ┗━ orchestration  ongoing  5d  1 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -319,7 +331,8 @@ fn inside_subproject_only_that_project_is_scanned() {
     let o = out(&sb.attention(&top.join("services/api"), &[]));
     let expected = format!(
         "spox attention: 1 spec needs a look\n\
-         auth  ongoing  30d  2 open\n\
+         api\n\
+         \x20 ┗━ auth  ongoing  30d  2 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -333,7 +346,8 @@ fn nearest_scope_skips_subprojects_via_flag_and_env() {
     let top = monorepo(&sb);
     let expected = format!(
         "spox attention: 1 spec needs a look\n\
-         orchestration  ongoing  5d  1 open\n\
+         mono\n\
+         \x20 ┗━ orchestration  ongoing  5d  1 open\n\
          {}\n",
         AGENT_LINE
     );
@@ -375,7 +389,7 @@ fn project_option_sets_the_starting_directory() {
         .env_remove("SPOX_PROJECT")
         .output()
         .unwrap();
-    assert!(out(&o).starts_with("spox attention: 1 spec needs a look\nui  pending-verification  15d"), "{}", out(&o));
+    assert!(out(&o).starts_with("spox attention: 1 spec needs a look\nweb\n  ┗━ ui  pending-verification  15d"), "{}", out(&o));
 }
 
 #[test]
