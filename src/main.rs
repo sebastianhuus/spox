@@ -695,6 +695,8 @@ fn merge_settings(root: &PathBuf, skill_dir: &PathBuf) {
         "Bash(spox skill install)",
         "Bash(spox path)",
         "Bash(spox format)",
+        "Bash(spox attention)",
+        "Bash(spox -C * attention)",
         "Bash(spox -C * list)",
         "Bash(spox -C * list -c)",
         "Bash(spox -C * list --criteria)",
@@ -1051,20 +1053,221 @@ fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
     truncated
 }
 
-fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_tagline: bool) {
-    let spox_dir = require_spox_dir();
-
-    let mut specs: Vec<Spec> = fs::read_dir(&spox_dir)
-        .unwrap_or_else(|e| {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        })
+// All specs in a `.spox` dir: visible `.md` files, parsed.
+fn read_specs(spox_dir: &Path) -> std::io::Result<Vec<Spec>> {
+    Ok(fs::read_dir(spox_dir)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| !n.starts_with('.')).unwrap_or(false))
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
         .filter_map(|p| parse_spec(&p))
-        .collect();
+        .collect())
+}
+
+const ATTENTION_STATUSES: [&str; 2] = ["ongoing", "pending-verification"];
+const ATTENTION_MAX_LISTED: usize = 5;
+const ATTENTION_AGENT_LINE: &str =
+    "Agent: mention this briefly at a natural moment, offer to go through it, and do not change any spec without asking.";
+
+#[derive(PartialEq, Clone, Copy)]
+enum AttentionScope {
+    All,
+    Nearest,
+}
+
+fn parse_attention_scope(value: &str) -> AttentionScope {
+    match value {
+        "all" => AttentionScope::All,
+        "nearest" => AttentionScope::Nearest,
+        other => {
+            eprintln!("error: invalid scope '{}' (expected 'all' or 'nearest')", other);
+            std::process::exit(1);
+        }
+    }
+}
+
+// How a spec file stands in git. `Committed` carries the last commit time
+// (unix seconds); `Uncommitted` is untracked, or has staged/unstaged changes.
+enum GitState {
+    Committed(u64),
+    Uncommitted,
+}
+
+fn git_output(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
+    std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        // `git status` would otherwise refresh the index, i.e. write to .git.
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .output()
+        .ok()
+}
+
+fn in_git_work_tree(dir: &Path) -> bool {
+    git_output(dir, &["rev-parse", "--is-inside-work-tree"])
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false)
+}
+
+fn spec_git_state(spox_dir: &Path, file: &str) -> GitState {
+    let committed = git_output(spox_dir, &["log", "-1", "--format=%ct", "--", file])
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u64>().ok());
+    let Some(secs) = committed else { return GitState::Uncommitted };
+    let dirty = git_output(spox_dir, &["status", "--porcelain", "--", file])
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    if dirty { GitState::Uncommitted } else { GitState::Committed(secs) }
+}
+
+fn mtime_age_days(path: &Path) -> Option<u64> {
+    let elapsed = fs::metadata(path).ok()?.modified().ok()?.elapsed().unwrap_or_default();
+    Some(elapsed.as_secs() / 86400)
+}
+
+struct AttentionEntry {
+    label: String,
+    status: String,
+    age_days: u64,
+    open: usize,
+}
+
+// Project dirs to scan: the one containing `cwd`, plus (scope `all`) every
+// `.spox` below `cwd`. No `.spox` at or above `cwd` means nothing to scan.
+fn attention_projects(cwd: &Path, scope: AttentionScope) -> Vec<PathBuf> {
+    let Some(containing) = find_spox_above(cwd) else { return Vec::new() };
+    let mut dirs = vec![containing];
+    if scope == AttentionScope::All {
+        let mut below = Vec::new();
+        collect_spox_below(cwd, 1, &mut below);
+        below.sort();
+        for dir in below {
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+    }
+    dirs
+}
+
+fn cmd_attention(scope: AttentionScope) {
+    let Ok(cwd) = env::current_dir() else { return };
+    let spox_dirs = attention_projects(&cwd, scope);
+    let multi = spox_dirs.len() > 1;
+
+    let mut committed: Vec<AttentionEntry> = Vec::new();
+    let mut uncommitted: Vec<String> = Vec::new();
+
+    for spox_dir in &spox_dirs {
+        let Ok(specs) = read_specs(spox_dir) else { continue };
+        let project = spox_dir.parent().unwrap_or(spox_dir);
+        let prefix = if multi {
+            let rel = project.strip_prefix(&cwd).unwrap_or(Path::new(""));
+            let rel = if rel.as_os_str().is_empty() { ".".to_string() } else { rel.display().to_string() };
+            format!("{}:", rel)
+        } else {
+            String::new()
+        };
+        let use_git = in_git_work_tree(spox_dir);
+
+        for spec in specs.iter().filter(|s| ATTENTION_STATUSES.contains(&s.status.as_str())) {
+            let file = format!("{}.md", spec.name);
+            let label = format!("{}{}", prefix, spec.name);
+            let age_days = if use_git {
+                match spec_git_state(spox_dir, &file) {
+                    GitState::Uncommitted => {
+                        uncommitted.push(label);
+                        continue;
+                    }
+                    GitState::Committed(secs) => {
+                        let now = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(secs);
+                        now.saturating_sub(secs) / 86400
+                    }
+                }
+            } else {
+                mtime_age_days(&spox_dir.join(&file)).unwrap_or(0)
+            };
+            committed.push(AttentionEntry {
+                label,
+                status: spec.status.clone(),
+                age_days,
+                open: spec.open_criteria.len(),
+            });
+        }
+    }
+
+    let total = committed.len() + uncommitted.len();
+    if total == 0 {
+        return;
+    }
+
+    committed.sort_by(|a, b| b.age_days.cmp(&a.age_days).then(a.label.cmp(&b.label)));
+    uncommitted.sort();
+
+    let mut report = if total == 1 {
+        "spox attention: 1 spec needs a look\n".to_string()
+    } else {
+        format!("spox attention: {} specs need a look\n", total)
+    };
+    for e in committed.iter().take(ATTENTION_MAX_LISTED) {
+        report.push_str(&format!("{}  {}  {}d  {} open\n", e.label, e.status, e.age_days, e.open));
+    }
+    if committed.len() > ATTENTION_MAX_LISTED {
+        report.push_str(&format!("…and {} more\n", committed.len() - ATTENTION_MAX_LISTED));
+    }
+    if !uncommitted.is_empty() {
+        let mut line = uncommitted.iter().take(ATTENTION_MAX_LISTED).cloned().collect::<Vec<_>>().join(", ");
+        if uncommitted.len() > ATTENTION_MAX_LISTED {
+            line.push_str(&format!(", …and {} more", uncommitted.len() - ATTENTION_MAX_LISTED));
+        }
+        report.push_str(&format!("uncommitted: {}\n", line));
+    }
+    report.push_str(ATTENTION_AGENT_LINE);
+    report.push('\n');
+
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(report.as_bytes());
+}
+
+// `spox attention [--scope all|nearest]`; the flag wins over SPOX_ATTENTION_SCOPE.
+fn attention_scope_from_args(flags: &[String]) -> AttentionScope {
+    let mut scope: Option<AttentionScope> = None;
+    let mut iter = flags.iter();
+    while let Some(flag) = iter.next() {
+        if flag == "--scope" {
+            let Some(value) = iter.next() else {
+                eprintln!("error: --scope requires a value ('all' or 'nearest')");
+                std::process::exit(1);
+            };
+            scope = Some(parse_attention_scope(value));
+        } else if let Some(value) = flag.strip_prefix("--scope=") {
+            scope = Some(parse_attention_scope(value));
+        } else {
+            eprintln!("error: unexpected arguments");
+            eprintln!("run `spox help` for usage");
+            std::process::exit(1);
+        }
+    }
+    scope
+        .or_else(|| {
+            env::var("SPOX_ATTENTION_SCOPE")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .map(|v| parse_attention_scope(&v))
+        })
+        .unwrap_or(AttentionScope::All)
+}
+
+fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_tagline: bool) {
+    let spox_dir = require_spox_dir();
+
+    let mut specs = read_specs(&spox_dir).unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
+    });
 
     if let Some(name) = filter {
         specs.retain(|s| s.name == name);
@@ -1163,6 +1366,7 @@ fn cmd_help() {
     println!("  check <spec> <label>   check off a criterion by stable hex label");
     println!("  check <spec> all       check off all remaining open criteria");
     println!("  status <spec> <value>  set a spec's status field ({})", VALID_STATUSES.join(", "));
+    println!("  attention [--scope s]  report stale ongoing/pending-verification specs (silent if none; s: all|nearest)");
     println!("  path                   print the resolved .spox directory");
     println!("  format                 print the project's .format.md");
     println!("  init                   create .spox/ in the current directory");
@@ -1173,10 +1377,17 @@ fn cmd_help() {
 }
 
 fn main() {
-    maybe_self_update();
     let args = apply_project_option(env::args().skip(1).collect());
+    // `attention` is called from session hooks: it must stay fast, read-only
+    // and quiet, so it never triggers the background self-update.
+    if args.first().map(String::as_str) != Some("attention") {
+        maybe_self_update();
+    }
 
     match args.as_slice() {
+        [a, flags @ ..] if a == "attention" => {
+            cmd_attention(attention_scope_from_args(flags));
+        }
         [a] if a == "version" || a == "--version" || a == "-V" => {
             println!("spox {}", env!("CARGO_PKG_VERSION"));
         }
@@ -1242,7 +1453,7 @@ fn main() {
                 .collect();
 
             // Known commands that didn't match their arm = wrong number of arguments.
-            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "path", "format", "version", "help"];
+            let known_cmds = ["check", "status", "skill", "list", "view", "init", "update", "path", "format", "attention", "version", "help"];
             let first_pos = positional.first().copied();
             if positional.len() > 1 || first_pos.map(|p| known_cmds.contains(&p)).unwrap_or(false) {
                 eprintln!("error: unexpected arguments");
