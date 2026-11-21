@@ -16,6 +16,8 @@ spox list                      # list all specs with their status
 spox list -c / --criteria      # also show labelled open criteria under each spec
 spox view <spec>               # show a single spec (raw markdown)
 spox view -c <spec>            # show a single spec's open criteria dashboard
+spox attention                 # report stale ongoing/pending-verification specs; prints nothing if none
+spox attention --scope nearest # only the project containing the current directory (default: all; also SPOX_ATTENTION_SCOPE)
 spox path                      # print the resolved .spox directory
 spox format                    # print the project's .format.md
 spox -C <dir> <command>        # act as if started in <dir> (project, a dir inside it, or its .spox); also SPOX_PROJECT=<dir>
@@ -26,6 +28,19 @@ spox check <spec> all          # check off all remaining open criteria at once
 spox status <spec> <value>     # set the status field of a spec
 spox skill install             # install the Claude Code skill into .claude/skills/
 spox version                   # print the installed version
+```
+
+**Attention report**
+
+`spox attention` is a read-only maintenance report meant to be called from a session hook. It only runs where spox is set up (a `.spox` at or above the current directory — it never searches below the git root for one) and looks at specs that are `ongoing` or `pending-verification`. With nothing to report it prints nothing and exits 0. Otherwise it prints a count line, up to 5 committed specs oldest first (age = days since the file's last git commit, or since its modified time outside a git repo), an `uncommitted:` line for specs that are untracked or have uncommitted changes, and a final line instructing the agent. By default it also scans every `.spox` project below the current directory (a monorepo top folder that has its own `.spox`), prefixing names with the project path; `--scope nearest` / `SPOX_ATTENTION_SCOPE=nearest` limits it to the containing project. It never runs the background self-update or writes any file.
+
+```
+> spox attention
+spox attention: 3 specs need a look
+services/api:auth  ongoing  30d  2 open
+.:orchestration  ongoing  5d  1 open
+uncommitted: services/web:ui
+Agent: mention this briefly at a natural moment, offer to go through it, and do not change any spec without asking.
 ```
 
 **Sample output**

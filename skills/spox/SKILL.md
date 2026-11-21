@@ -1,7 +1,7 @@
 ---
 name: spox
 description: Use this skill when the user wants to check, list, or update project specs tracked in a .spox/ directory. Trigger whenever the user mentions "spox", asks about spec status, wants to see what's in progress, references a .spox directory, asks about open criteria or unchecked tasks in specs, or wants to create or update a spec file. When in doubt, use this skill — it's the right tool any time specs or project status tracking come up.
-allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version) Bash(spox path) Bash(spox format) Bash(spox -C * list) Bash(spox -C * list -c) Bash(spox -C * list --criteria) Bash(spox -C * view *) Bash(spox -C * check *) Bash(spox -C * path) Bash(spox -C * format) Bash(cat *)
+allowed-tools: Bash(spox list) Bash(spox list -c) Bash(spox list --criteria) Bash(spox list -t) Bash(spox list --tagline) Bash(spox view *) Bash(spox view -c *) Bash(spox view --criteria *) Bash(spox check *) Bash(spox check * all) Bash(spox version) Bash(spox path) Bash(spox format) Bash(spox attention) Bash(spox -C * list) Bash(spox -C * list -c) Bash(spox -C * list --criteria) Bash(spox -C * view *) Bash(spox -C * check *) Bash(spox -C * path) Bash(spox -C * format) Bash(spox -C * attention) Bash(cat *)
 hooks:
   PreToolUse:
     - matcher: Bash
@@ -27,6 +27,8 @@ spox view <spec>               # show the full raw spec file
 spox view -c <spec>            # show a single spec's open criteria in dashboard format
 spox path                      # print the resolved .spox directory (absolute)
 spox format                    # print the project's .format.md (spec format conventions)
+spox attention                 # report stale ongoing/pending-verification specs (silent when none)
+spox attention --scope nearest # only the project containing CWD (default scope: all, incl. sub-projects)
 spox -C <dir> <command> ...    # run any command as if started in <dir>: the project dir, a dir inside it, or its .spox
 spox init                      # create .spox/ in the current directory (new projects)
 spox check <spec> <label>      # check off the criterion with the given label (stable, preferred)
@@ -37,6 +39,20 @@ spox skill install             # copy this skill into the project's .claude/skil
 spox version                   # print the installed version
 spox help                      # show usage
 ```
+
+## Attention report
+
+`spox attention` is a read-only maintenance report, normally called by a session hook rather than by hand. It prints nothing (exit 0) when there is nothing to flag or no `.spox/` at or above CWD. Otherwise the output looks like this:
+
+```
+spox attention: 3 specs need a look
+services/api:auth  ongoing  30d  2 open
+.:orchestration  ongoing  5d  1 open
+uncommitted: services/web:ui
+Agent: mention this briefly at a natural moment, offer to go through it, and do not change any spec without asking.
+```
+
+Each listed line is `<spec>  <status>  <age>d  <open> open` (age = days since the spec's last git commit; oldest first, at most 5). `uncommitted:` names `ongoing`/`pending-verification` specs that are untracked or have uncommitted changes — specs should be committed once finalized. Names carry a `<project-path>:` prefix when several projects were scanned. When you see this report (in a hook's output or by running the command), follow its last line: mention it briefly at a natural moment, offer to go through it, and never change a spec without asking.
 
 ## Which project? (nested `.spox/`)
 
