@@ -28,3 +28,5 @@ Provide a `_spox` zsh completion function that completes subcommands, spec names
 **Dynamic sourcing:** The completion function reads spec names and statuses at completion time by parsing the `status:` front-matter line from each `.spox/*.md`. This keeps the plugin self-contained with no dependency on `spox` itself being in PATH during completion.
 
 **`skill install` subcommand:** `spox skill` takes `install` as a fixed argument, not a spec name. Completion should offer `install` after `spox skill`. Subcommands like this are not captured by `KNOWN_COMMANDS` (which only tracks top-level names) — the static check covers top-level commands only.
+
+**`attention` and its flags:** `spox attention` (added after this spec was drafted) must be offered as a top-level command, and after it the flags `--scope` (completing the values `all` and `nearest`) and `--hook`. Like `install` after `skill`, these flags are not captured by `KNOWN_COMMANDS`, which only tracks top-level command names, so the static check will not catch them going missing; the completion function lists them by hand. `attention` does not take a spec name.

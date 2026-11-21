@@ -912,9 +912,13 @@ fn spox_repo_dir() -> Option<PathBuf> {
     real.parent()?.parent()?.parent().map(PathBuf::from)
 }
 
-fn last_check_path() -> Option<PathBuf> {
+fn spox_cache_dir() -> Option<PathBuf> {
     let home = env::var("HOME").ok()?;
-    Some(PathBuf::from(home).join(".cache").join("spox").join("last_check"))
+    Some(PathBuf::from(home).join(".cache").join("spox"))
+}
+
+fn last_check_path() -> Option<PathBuf> {
+    Some(spox_cache_dir()?.join("last_check"))
 }
 
 fn should_check_updates() -> bool {
@@ -1170,8 +1174,10 @@ fn attention_project_label(project: &Path, containing: bool, cwd: &Path) -> Stri
     }
 }
 
-fn cmd_attention(scope: AttentionScope) {
-    let Ok(cwd) = env::current_dir() else { return };
+// The report text plus the project (dir containing the nearest `.spox`) it is
+// about; None when there is nothing to report or no spox project.
+fn build_attention_report(scope: AttentionScope) -> Option<(String, PathBuf)> {
+    let Ok(cwd) = env::current_dir() else { return None };
     let spox_dirs = attention_projects(&cwd, scope);
 
     let mut labels: Vec<String> = Vec::new();
@@ -1211,7 +1217,7 @@ fn cmd_attention(scope: AttentionScope) {
 
     let total = entries.len();
     if total == 0 {
-        return;
+        return None;
     }
 
     // Up to 5 committed specs (oldest first) and up to 5 uncommitted ones.
@@ -1263,16 +1269,103 @@ fn cmd_attention(scope: AttentionScope) {
     report.push_str(ATTENTION_AGENT_LINE);
     report.push('\n');
 
+    let first = &spox_dirs[0];
+    Some((report, first.parent().unwrap_or(first).to_path_buf()))
+}
+
+fn print_report(report: &str) {
     use std::io::Write;
     let _ = std::io::stdout().write_all(report.as_bytes());
 }
 
-// `spox attention [--scope all|nearest]`; the flag wins over SPOX_ATTENTION_SCOPE.
-fn attention_scope_from_args(flags: &[String]) -> AttentionScope {
+const HOOK_INTERVAL_SECS: u64 = 86400;
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+// Throttle state: one `<unix seconds>\t<project path>` line per project.
+fn read_hook_state(path: &Path) -> Vec<(u64, String)> {
+    let Ok(content) = fs::read_to_string(path) else { return Vec::new() };
+    content
+        .lines()
+        .filter_map(|line| {
+            let (secs, project) = line.split_once('\t')?;
+            Some((secs.parse().ok()?, project.to_string()))
+        })
+        .collect()
+}
+
+// Write via a temp file so a concurrent reader never sees a partial file.
+fn write_hook_state(path: &Path, entries: &[(u64, String)]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut content = String::new();
+    for (secs, project) in entries {
+        content.push_str(&format!("{}\t{}\n", secs, project));
+    }
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    fs::write(&tmp, content)?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e
+    })
+}
+
+// `--hook`: the same report, but at most once per 24 hours per project, and
+// silent about everything else (the caller discards stderr and ignores the
+// exit status anyway).
+fn cmd_attention_hook(scope: AttentionScope) {
+    let Some((report, project)) = build_attention_report(scope) else { return };
+    let Some(state_path) = spox_cache_dir().map(|d| d.join("attention_hook")) else { return };
+    let key = project.display().to_string();
+    let now = unix_now();
+
+    // Keep only entries that are still within the window; anything older (or
+    // from the future) would count as due anyway.
+    let mut entries: Vec<(u64, String)> = read_hook_state(&state_path)
+        .into_iter()
+        .filter(|(secs, _)| *secs <= now && now - *secs < HOOK_INTERVAL_SECS)
+        .collect();
+    if entries.iter().any(|(_, p)| *p == key) {
+        return;
+    }
+    entries.push((now, key));
+
+    // Record first: if the time cannot be stored, stay silent rather than
+    // repeat the report at every session start.
+    if write_hook_state(&state_path, &entries).is_err() {
+        return;
+    }
+    print_report(&report);
+}
+
+struct AttentionArgs {
+    scope: AttentionScope,
+    hook: bool,
+}
+
+fn cmd_attention(args: AttentionArgs) {
+    if args.hook {
+        cmd_attention_hook(args.scope);
+    } else if let Some((report, _)) = build_attention_report(args.scope) {
+        print_report(&report);
+    }
+}
+
+// `spox attention [--scope all|nearest] [--hook]`; the flag wins over SPOX_ATTENTION_SCOPE.
+fn attention_args_from_flags(flags: &[String]) -> AttentionArgs {
     let mut scope: Option<AttentionScope> = None;
+    let mut hook = false;
     let mut iter = flags.iter();
     while let Some(flag) = iter.next() {
-        if flag == "--scope" {
+        if flag == "--hook" {
+            hook = true;
+        } else if flag == "--scope" {
             let Some(value) = iter.next() else {
                 eprintln!("error: --scope requires a value ('all' or 'nearest')");
                 std::process::exit(1);
@@ -1286,14 +1379,15 @@ fn attention_scope_from_args(flags: &[String]) -> AttentionScope {
             std::process::exit(1);
         }
     }
-    scope
+    let scope = scope
         .or_else(|| {
             env::var("SPOX_ATTENTION_SCOPE")
                 .ok()
                 .filter(|v| !v.is_empty())
                 .map(|v| parse_attention_scope(&v))
         })
-        .unwrap_or(AttentionScope::All)
+        .unwrap_or(AttentionScope::All);
+    AttentionArgs { scope, hook }
 }
 
 fn cmd_list(show_criteria: bool, filter: Option<&str>, active_only: bool, show_tagline: bool) {
@@ -1402,6 +1496,7 @@ fn cmd_help() {
     println!("  check <spec> all       check off all remaining open criteria");
     println!("  status <spec> <value>  set a spec's status field ({})", VALID_STATUSES.join(", "));
     println!("  attention [--scope s]  report stale ongoing/pending-verification specs (silent if none; s: all|nearest)");
+    println!("  attention --hook       same report, at most once a day per project; for session hooks");
     println!("  path                   print the resolved .spox directory");
     println!("  format                 print the project's .format.md");
     println!("  init                   create .spox/ in the current directory");
@@ -1421,7 +1516,7 @@ fn main() {
 
     match args.as_slice() {
         [a, flags @ ..] if a == "attention" => {
-            cmd_attention(attention_scope_from_args(flags));
+            cmd_attention(attention_args_from_flags(flags));
         }
         [a] if a == "version" || a == "--version" || a == "-V" => {
             println!("spox {}", env!("CARGO_PKG_VERSION"));
