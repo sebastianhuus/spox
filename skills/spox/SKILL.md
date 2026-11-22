@@ -136,6 +136,8 @@ Some notes about this spec.
 - [ ] Add tests
 ```
 
+Real specs follow the structure in `spec-template.md`. That includes an optional `## Open questions` section: one bullet per unresolved, non-blocking question, with `Recommend: ...` when you have a suggestion. Ask blocking questions at once instead; move answered ones to Notes as `Decided: ...`; never write a question as `- [ ]` (spox counts those as criteria). See `sdd.md`.
+
 ## Checking for MarkReview annotations
 
 Specs can be reviewed and annotated in the MarkReview app, which saves annotations to a
