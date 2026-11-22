@@ -14,6 +14,15 @@ SDD is a lightweight discipline: **write the spec before you write the code**. T
 
 4. **Discard if the approach is abandoned** — `spox status <spec> discarded`. Keep the file; it's useful context.
 
+## Open questions
+
+A spec may have an optional `## Open questions` section (between Non-goals and Notes) for questions that came up while writing or working on it:
+
+- **Blocking questions are asked at once**, in your reply or with `AskUserQuestion`. Don't park them in the spec and carry on.
+- **Non-blocking questions go under `## Open questions`**, one bullet per question, with `Recommend: ...` when you have a suggestion. Never bury a question inside a Notes bullet.
+- **Answered questions move to Notes** as `Decided: ...`, and the bullet is removed from Open questions.
+- **Never write a question as `- [ ]`.** spox counts every `- [ ]` as an acceptance criterion, so it would show up in `spox list -c` and block completion.
+
 ## When to create a spec
 
 - Any feature with more than one moving part

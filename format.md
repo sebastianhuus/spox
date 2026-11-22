@@ -60,13 +60,22 @@ What this is for and why it exists. One paragraph max.
 ## Non-goals
 What's explicitly out of scope for this spec. Optional — omit if there's nothing worth excluding.
 
+## Open questions
+Optional — omit if there are none.
+- A non-blocking question? Recommend: a suggestion, if you have one.
+
 ## Notes
-Design decisions, open questions, or implementation detail worth preserving.
+Design decisions, answered questions as "Decided: ...", or implementation detail worth preserving.
 ```
 
 Acceptance criteria should be things you can actually check — visible in the running game,
 covered by a test, or confirmed by reading the output. Vague criteria ("feels good", "works well")
 belong in Notes, not criteria.
+
+Open questions are optional. One bullet per unresolved, non-blocking question, with `Recommend: ...`
+when there's a suggestion. A question that blocks the work is asked at once, not recorded here. When a
+question is answered, remove it and record the outcome in Notes as `Decided: ...`. Never write a
+question as `- [ ]` — spox counts every `- [ ]` as an acceptance criterion.
 
 Non-goals are optional but useful whenever a feature request could plausibly be read as bigger
 than intended — they record what was deliberately excluded, not just what wasn't mentioned.
