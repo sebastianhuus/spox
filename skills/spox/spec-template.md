@@ -13,5 +13,9 @@ date: [YYYY-MM-DD, today's date]
 ## Non-goals
 [What's explicitly out of scope. Optional — omit if empty.]
 
+## Open questions
+[Optional — omit if there are none. One bullet per unresolved, non-blocking question. Add "Recommend: ..." when you have a suggestion. Never write questions as `- [ ]`.]
+- [Question?] Recommend: [suggestion]
+
 ## Notes
-[Design decisions, open questions, or implementation detail worth preserving. Optional.]
+[Design decisions, answered questions as "Decided: ...", or implementation detail worth preserving. Optional.]

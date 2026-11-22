@@ -65,11 +65,22 @@ date: [YYYY-MM-DD, today's date]
 ## Non-goals
 [What's explicitly out of scope, if the user named any. Omit section if empty.]
 
+## Open questions
+[Unresolved, non-blocking questions, one bullet each, with "Recommend: ..." when you have a suggestion. Omit section if empty.]
+- [Question?] Recommend: [suggestion]
+
 ## Notes
-[Design decisions, open questions, or implementation detail. Omit section if empty.]
+[Design decisions, answered questions as "Decided: ...", or implementation detail. Omit section if empty.]
 ```
 
 Fill in the `date:` line with today's date. Fill in `Intent` and `Notes` from the user's description, the confirmed technical approach, and Explore findings (conventions, relevant files, related specs).
+
+**Open questions.** The `## Open questions` section sits between Non-goals and Notes and is optional. Rules:
+
+- A question that blocks the work is asked at once (Step 2 or a plain question in your reply), not parked in the spec.
+- A non-blocking question goes under `## Open questions`, one bullet per question, with `Recommend: ...` when you have a suggestion. Never put a question inside a Notes bullet.
+- Once answered, remove it from Open questions and record the outcome in Notes as `Decided: ...`.
+- Never write a question as `- [ ]`: spox counts every `- [ ]` as an acceptance criterion.
 
 Write the result to `<spec-directory>/<name>.md`, then run `spox view <name>` to confirm it was picked up and show the user what was written. Because the substantive decisions (approach, scope, done condition) were already confirmed in Step 2, this isn't a second approval gate — just say it's written and that they can adjust anytime.
 
